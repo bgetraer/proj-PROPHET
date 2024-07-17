@@ -1,17 +1,22 @@
-% PROPHET Amundsen Sea Coupling
-% Outline:
-%	Initialize and spin up ocean model
-%  Initialize ice sheet model
-%  Run coupled 
+% RUN_ISSM_INIT is a script to initialize the ISSM ice sheet model for the 
+% PROPHET Amundsen Sea Coupling experiment.
+% 
+% Overview of experiment scripts:
+%  RUN_ISSM_INIT.m      Initialize ice sheet model
+%  RUN_MITGCM_INIT.m    Initialize ocean model
+%  RUN_ISSMxMITGCM.m    Run coupled model
 %
-% Experiment:
-%  Run with monthly climatology for ocean boundary conditions
-%    Each month is different but gets repeated every year
-%    The calendar is a "model" calendar:
-%      12 months of 30 days = 360 days per year
-%      Either 
+% Overview of this script:
+%  1) initialize the domain mesh and parameters of the ice sheet model
+%  2) invert for the flow parameter B and the friction parameter C
+% 
+% Output:
+%  md is a structure of the ISSM model class that contains the initial state
+%      of the model.
+%
+% https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[2];
+steps=[3];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -36,9 +41,8 @@ if ~exist(modeldir)
 end
 % }}}
 
-% Ice Model
+% Ice model files
 expfile='./Exp/domain.exp';
-% ISSM domain setup
 
 org=organizer('repository',modeldir,'prefix','PROPHET_test','steps',steps);
 if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{ 
@@ -90,7 +94,8 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
    md.miscellaneous.name='PROPHET_ISSM';
 
 	% Material propoerties
-	temp0 = 273.15-10; % approzimate temperature of the ice (for A and initialization) (deg K)
+	% Englacial temperatures from PIG: Truffer & Stanton (2015); Mulvaney (2017). Median temp ~ -22 deg C
+	temp0 = 273.15-22; % approximate englacial temperature of the ice (for A and initialization) (deg K) 
    md.materials.rheology_B=cuffey(temp0)*ones(md.mesh.numberofvertices,1); % Cuffey & Paterson, for T=-10degC (Pa s^1/n)
    md.materials.rho_water=1028; % ocean water density (kg/m^3)
 
@@ -228,13 +233,20 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
 	% Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
    md.inversion.cost_functions_coefficients(:,1) = 4.5; % coefficient for linear fit
    md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 1E-18; % coefficient for regularization
+   md.inversion.cost_functions_coefficients(:,3) = 0.5E-20; % coefficient for regularization
 	load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
    md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
-   % Controls on max/min B allowed
-   md.inversion.min_parameters=0.8*cuffey(273.15)*ones(size(md.materials.rheology_B)); % from Seroussi et al, 2014
-   md.inversion.max_parameters=1*cuffey(273.15-30)*ones(size(md.materials.rheology_B)); % from Seroussi et al, 2014
+	% Controls on max/min B allowed: see Truffer & Stanton, 2015 for englacial ice temperature bounds, Cuffey & Paterson, 2010 for A and E*
+   % min: A=2.4E-24 for   0degC ice, E*=10  for max enhancement factor of Antarctic ice in strong shear
+   % max: A=6.8E-26 for -25degC ice, E*=0.6 for min enhancement factor of Antarctic ice shelves
+   lim_A = [6.8E-26, 2.4E-24];                               % limits on A (Pa^-n s^-1)
+   lim_Estar = [0.6, 10];                                    % limits on enhancement factor E* (non-dim.)
+   lim_B = (lim_A.*lim_Estar).^(-1/md.materials.rheology_n); % limits on B (Pa s^1/n)
+   md.inversion.min_parameters= min(lim_B)*ones(size(md.materials.rheology_B)); % lower bound on B (Pa s^1/n)
+   md.inversion.max_parameters= max(lim_B)*ones(size(md.materials.rheology_B)); % upper bound on B (Pa s^1/n)
+   md.inversion.min_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
+   md.inversion.max_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
 
    % Stress balance parameters
    md.stressbalance.maxiter=50;   %
@@ -242,6 +254,7 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    md.stressbalance.abstol=NaN;   %
 
 	% Extract the floating model subdomain and prepare to solve
+	% This sets Dirichlet velocity b.c. at the grounding line
    mds=extract(md,md.mask.ocean_levelset<0);
    mds.cluster=generic('name',oshostname(),'np',45); %for totten 45 ideal
    mds.verbose=verbose('solution',false,'control',true);
@@ -253,12 +266,12 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    mds.toolkits.DefaultAnalysis.ksp_max_it=500;
    mds.settings.solver_residue_threshold=1e-6;
 
-%	% Solve
-%   mds=solve(mds,'Stressbalance'); % only extracted model
-%
-%   % Update the full model rheology_B accordingly
-%   md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
-%   savemodel(org,md);
+	% Solve
+   mds=solve(mds,'Stressbalance'); % only extracted model
+
+   % Update the full model rheology_B accordingly
+   md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
+   savemodel(org,md);
 end % }}}
 if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md=loadmodel(org,'InversionB');
@@ -283,9 +296,9 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
 
    % Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
-   md.inversion.cost_functions_coefficients(:,1) = 350; % coefficient for linear fit
+   md.inversion.cost_functions_coefficients(:,1) = 600; % coefficient for linear fit
    md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 1E-15; % coefficient for regularization
+   md.inversion.cost_functions_coefficients(:,3) = 5E-10; % coefficient for regularization
    load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
    md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
@@ -331,166 +344,70 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
 
    savemodel(org,md);
 end%}}}
+if perform(org,'InversionB2'),  % Re-invert for flow law parameter B{{{
+   md=loadmodel(org,'InversionC');
 
+   % new inversion with M1QN3 package
+   md.inversion=m1qn3inversion(md.inversion);
+
+   % Control general
+   md.inversion.iscontrol=1; % flag to turn on inversion
+   md.inversion.control_parameters={'MaterialsRheologyBbar'}; % invert for B
+   md.inversion.maxsteps=50; % maximum number of iterations (gradient computation)
+   md.inversion.maxiter=50;  % maximum number of function evaluations (forward run)
+   md.inversion.dxmin=0.1;   % convergence criterion: two points less than dxmin from each other (sup-norm) are considered identical
+   md.inversion.gttol=1E-6;  % convergence criterion: ||g(X)||/||g(X0)|| (g(X0): gradient at initial guess X0)
+   md.inversion.incomplete_adjoint=0; % 0 non linear viscosity; 1 linear viscosity 
+
+   % Cost functions
+	% 101: SurfaceAbsVelMisfit (fit in linear space)
+	% 103: SurfaceLogVelMisfit (fit in log space)
+	% 502: RheologyBbarAbsGradient (regularization)
+   md.inversion.cost_functions=[101 103 502]; % set the cost functions
+   md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
+	
+	% Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
+   md.inversion.cost_functions_coefficients(:,1) = 200; % coefficient for linear fit
+   md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
+   md.inversion.cost_functions_coefficients(:,3) = 1E-16; % coefficient for regularization
+	load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
+   md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
+
+   % Controls on max/min B allowed: see Truffer & Stanton, 2015 for englacial ice temperature bounds, Cuffey & Paterson, 2010 for A and E*
+	% min: A=2.4E-24 for   0degC ice, E*=10  for max enhancement factor of Antarctic ice in strong shear
+	% max: A=6.8E-26 for -25degC ice, E*=0.6 for min enhancement factor of Antarctic ice shelves
+	lim_A = [6.8E-26, 2.4E-24];                               % limits on A (Pa^-n s^-1)
+	lim_Estar = [0.6, 10];                                    % limits on enhancement factor E* (non-dim.)
+	lim_B = (lim_A.*lim_Estar).^(-1/md.materials.rheology_n); % limits on B (Pa s^1/n)
+	md.inversion.min_parameters= min(lim_B)*ones(size(md.materials.rheology_B)); % lower bound on B (Pa s^1/n)
+   md.inversion.max_parameters= max(lim_B)*ones(size(md.materials.rheology_B)); % upper bound on B (Pa s^1/n)
+	md.inversion.min_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
+	md.inversion.max_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
+
+   % Stress balance parameters
+   md.stressbalance.maxiter=50;   %
+   md.stressbalance.reltol=NaN;   %
+   md.stressbalance.abstol=NaN;   %
+
+   md.cluster=generic('name',oshostname(),'np',45); %for totten 45 ideal
+   md.verbose=verbose('solution',false,'control',true);
+   md.miscellaneous.name='inversion_B2';
+
+   % Solver parameters
+   md.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
+   md.toolkits.DefaultAnalysis.ksp_max_it=500;
+   md.settings.solver_residue_threshold=1e-6;
+
+	% Solve
+   md=solve(md,'Stressbalance'); % only extracted model
+
+   % Update the full model rheology_B accordingly
+   md.materials.rheology_B = md.results.StressbalanceSolution.MaterialsRheologyBbar;
+   savemodel(org,md);
+end % }}}
 
 % local functions {{{
 % file writing
-function write_sizefile(fname,SZ) % {{{
-	% Reads from SZ.reffile and writes to fname
-	% INPUT
-	%    fname   file to write to 
-	%    SZ      struct with fields: sNx,sNy,OLx,OLy,nSx,nSy,nPx,nPy,Nx,Ny,Nr, and reffile
-	%     SZ.reffile   MITgcm reference file to read from
-
-	if SZ.Nx~=(SZ.sNx*SZ.nSx*SZ.nPx) | SZ.Ny~=(SZ.sNy*SZ.nSy*SZ.nPy)
-		error('MITgcm domain discretization inconsistent');
-	end
-
-	disp(['writing SIZE     file to ' fname]);
-	writeID=fopen(fname,'w');
-	readID=fopen(SZ.reffile,'r');
-	% read through the template file, write to the new file
-	formatSpec='%s\n'; % new line after each string is written
-	values=[SZ.sNx, SZ.sNy, SZ.OLx, SZ.OLy, SZ.nSx, SZ.nSy, SZ.nPx, SZ.nPy, SZ.Nx, SZ.Ny, SZ.Nr]; % ensure correct ordering of values
-	% read through any uncommented header, do NOT write to new file {{{
-	tline = fgetl(readID);
-	while ~strcmp(tline,'CBOP')
-		tline = fgetl(readID);
-	end % }}}
-	% read through the commented header, write to new file {{{
-	while tline(1)=='C'
-		fprintf(writeID,formatSpec,tline);
-		tline = fgetl(readID);
-	end %}}}
-	% read through the variable declarations, write to new file {{{
-	while contains(tline,'INTEGER') | contains(tline,'PARAMETER')
-		fprintf(writeID,formatSpec,tline);
-		tline = fgetl(readID);
-	end % }}}
-	% read through the variable values, write to new file {{{
-	i=1;
-	while contains(tline,'&')
-		% assumes Nx  = sNx*nSx*nPx and Ny  = sNy*nSy*nPy
-		if ~any(i==[9,10])
-			% extract the string of char before and after the template variable value
-			[tempvalue,sline] = regexp(tline,'\d*','Match','split');
-			% insert the variable value
-			tline=[sline{1} num2str(values(i)) sline{2}];
-		end
-		% write to new file
-		fprintf(writeID,formatSpec,tline);
-		% advance to the next line
-		i=i+1;
-		tline = fgetl(readID);
-	end % }}}
-	% read the rest of the template file, write to new file (assumes MAX_OLX = OLx, and MAX_OLY = OLy) {{{
-	while isstr(tline)
-		fprintf(writeID,formatSpec,tline);
-		tline = fgetl(readID);
-	end % }}}
-	fclose(writeID);
-	fclose(readID);
-end % }}}
-function write_pkgconffile(fname,PKGCONF) % {{{
-	% WRITE_PKGCONFFILE writes the requested package names to the MITgcm compile-time configuration file
-	disp(['writing config.  file to ' fname]);
-	fileID = fopen(fname,'w');
-	fprintf(fileID,'# %s\n',PKGCONF.description); % write description
-	fprintf(fileID,'%s\n',PKGCONF.pkg{:}); % write packages
-	fclose(fileID);
-end % }}}
-function write_datafile(fname,C,head) % {{{
-	% WRITE_DATAFILE writes structures in C to fname {{{
-	% INPUT: fname   string file to write
-	%        C       cell array of structures (P) to write
-	%        head    string of file header
-	%
-	% OUTPUT: writes to file with the following form:
-	%
-	% # head
-	% # C{1}.description
-	%  &C{1}.header
-	%  C{1}.field1=value1,
-	%  C{1}.field2=value2,
-	%  ...
-	%  & 
-	%
-	% # C{2}.description
-	%  &C{2}.header
-	%  C{2}.field1=value1,
-	%  C{2}.field2=value2,
-	%  ...
-	%  &
-	%  ...
-	% }}}
-	disp(['writing namelist file to ' fname])
-	fileID = fopen(fname,'w');
-	fprintf(fileID,'# %s\n',head); % write descriptive file header 
-
-	% loop through structures in C
-	for i=1:length(C)
-		% write a descriptive comment if it exists {{{
-		if isfield(C{i},'description')
-			if iscell(C{i}.description)
-				fprintf(fileID,'# %s\n',C{i}.description{:}); % write multi-line description
-			else
-				fprintf(fileID,'# %s\n',C{i}.description); % write description
-			end
-			C{i}=rmfield(C{i},'description'); % do not write as field
-		end % }}}
-		% write PARM header {{{
-		fprintf(fileID,' &%s\n',C{i}.header); % write header
-		C{i}=rmfield(C{i},'header'); % do not write as field
-		% }}}
-		% write parameter fields and end section {{{
-		if isfield(C{i},'N') % if diagnostic fields
-			writediagfields(fileID,C{i}.N);
-			C{i}=rmfield(C{i},'N'); % done with diag fields
-		end
-		writefields(fileID,C{i}); % write non-diagnostic fields
-		fprintf(fileID,' &\n\n'); % end section
-		% }}}
-	end 
-	fclose(fileID);
-end % }}}
-function writefields(fileID,P) % {{{
-	% WRITEFIELDS writes each field in P to fileID as a new line
-	%  Each line takes the form ' fieldname=value,'
-	fields=fieldnames(P);
-	for i=1:length(fields)
-		val=getfield(P,fields{i});
-		fprintf(fileID,' %s=%s,\n',fields{i},num2str(val));
-	end
-end  % }}}
-function writediagfields(fileID,N) % {{{
-	% WRITEDIAGFIELDS writes diagnostic fields for each output stream
-	% INPUT: N is a struct. array with an element for each output stream n
-	%  Each line takes the form fieldname(n)=value except for 
-	%  'fields' with take the form fields(1:length,n)='fields{1}', 'fields{2}', ...
-
-	% loop over each output stream
-	for n=1:length(N)
-		subfields=fieldnames(N(n));
-		% loop over each subfield
-		for i=1:length(subfields)
-			switch subfields{i}
-				case 'fields'
-					LHS=[subfields{i} '(1:' num2str(length(N(n).fields)) ',' num2str(n) ')'];
-					dfields=getfield(N(n),subfields{i});
-					dfields=strcat('''',dfields,''', ');
-					RHS=strcat(dfields{:});
-					fprintf(fileID,' %s=%s\n',LHS,RHS); % write to file
-				case 'levels'
-					error('diag. levels not supported');
-				otherwise
-					LHS=[subfields{i} '(' num2str(n) ')'];
-					RHS=num2str(getfield(N(n),subfields{i}));
-					fprintf(fileID,' %s=%s,\n',LHS,RHS); % write to file
-			end
-		end
-		fprintf(fileID,'\n'); % line break
-	end
-end % }}}
 function write_expfile(fname,EXP) % {{{
 	% WRITE_EXPFILE writes an exp domain outline from EXP to fname
 	% INPUT: fname    .exp file to be written to
