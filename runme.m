@@ -152,7 +152,6 @@ y2d=360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) 
 y2s=y2d*24*60*60; % y2s using 'model' calendar
 cal_t0=datetime(2013,1,1,0,0,0); % starting calendar datetime
 % }}}
-
 % Run-time options
 % input/eedata {{{
 EEP=struct; % initialize EEDATA structure
