@@ -11,7 +11,7 @@
 %      12 months of 30 days = 360 days per year
 %      Either 
 
-steps=[3];
+steps=[2];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -34,7 +34,6 @@ modeldir=fullfile(expdir,'Models');
 if ~exist(modeldir)
    mkdir(modeldir);
 end
-% }}}
 % }}}
 
 % Ice Model
@@ -149,7 +148,7 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	end
    % }}}
 	% Adjust ice mask
-	pos = find(max(md.mask.ice_levelset(md.mesh.elements),[],2)>0); % elements with at least 1 vertex that has no ice
+	pos = max(md.mask.ice_levelset(md.mesh.elements),[],2)>0; % elements with at least 1 vertex that has no ice
 	md.mask.ice_levelset(md.mesh.elements(pos,:))= +1; % set 'no ice' on the partial ice elements to force ice front boundary upstream of the cliff
 	md.mask.ice_levelset   = reinitializelevelset(md, md.mask.ice_levelset);
 
@@ -171,9 +170,12 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	md.initialization.temperature=(temp0)*ones(md.mesh.numberofvertices,1); % initial temperature field (K)
 
 	% Basal Friction
-	md.friction = frictioncoulomb2(); % Coulomb-limited sliding law used in MISMIP+ (Cornford et. al., 2020)
-	md.friction.C = sqrt(3.16E6).*ones(md.mesh.numberofelements,1); % C^2 = 3.16E6 (Pa m^−(friction.m) s^(friction.m) ) see (Cornford et. al., 2020)
-	md.friction.m = 1/3.*ones(md.mesh.numberofelements,1); % assume to follow Weertman (non-dimensional)
+   md.friction = frictionschoof(); % Coulomb-limited sliding law used in MISMIP+ (Schoof 2005, 2007, Cornford et. al., 2020)
+   md.friction.C = sqrt(3.16E6).*ones(md.mesh.numberofvertices,1); % C^2 = 3.16E6 (Pa m^−(friction.m) s^(friction.m) ) see (Cornford et. al., 2020)
+	md.friction.C(md.mask.ocean_levelset<0) = 0; % C^2 = 0 (Pa m^−(friction.m) s^(friction.m) )
+	md.friction.Cmax = 0.5.*ones(md.mesh.numberofvertices,1); % Iken's bound 
+   md.friction.m = 1/3.*ones(md.mesh.numberofelements,1); % assume to follow Weertman (non-dimensional)
+	md.friction.coupling=2;
 	
 	% Surface Mass Balance from RACMO
    md.smb.mass_balance = interpRACMOant(md.mesh.x,md.mesh.y); % interpolate accumulation rate data from RACMO (SMB_RACMO2.3_1979_2011.nc) (m/yr ice equivalence)
@@ -251,25 +253,18 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    mds.toolkits.DefaultAnalysis.ksp_max_it=500;
    mds.settings.solver_residue_threshold=1e-6;
 
-	% Solve
-   mds=solve(mds,'Stressbalance'); % only extracted model
-
-   % Update the full model rheology_B accordingly
-   md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
-   savemodel(org,md);
+%	% Solve
+%   mds=solve(mds,'Stressbalance'); % only extracted model
+%
+%   % Update the full model rheology_B accordingly
+%   md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
+%   savemodel(org,md);
 end % }}}
 if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md=loadmodel(org,'InversionB');
 
 	% new inversion with M1QN3 package
    md.inversion=m1qn3inversion(md.inversion);
-
-	% Basal Friction
-   md.friction = frictionschoof(); % Coulomb-limited sliding law used in MISMIP+ (Cornford et. al., 2020)
-   md.friction.C = sqrt(3.16E6).*ones(md.mesh.numberofvertices,1); % C^2 = 3.16E6 (Pa m^−(friction.m) s^(friction.m) ) see (Cornford et. al., 2020)
-	md.friction.Cmax = 0.5.*ones(md.mesh.numberofvertices,1);
-   md.friction.m = 1/3.*ones(md.mesh.numberofelements,1); % assume to follow Weertman (non-dimensional)
-	md.friction.coupling=2;
 
 	% Control general
    md.inversion.iscontrol=1; % flag to turn on inversion
@@ -288,18 +283,18 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
 
    % Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
-   md.inversion.cost_functions_coefficients(:,1) = 300; % coefficient for linear fit
+   md.inversion.cost_functions_coefficients(:,1) = 350; % coefficient for linear fit
    md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 1E-16; % coefficient for regularization
+   md.inversion.cost_functions_coefficients(:,3) = 1E-15; % coefficient for regularization
    load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
    md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
    % Controls on max/min C allowed
    md.inversion.min_parameters = 0*md.friction.C;
    md.inversion.max_parameters =  4*md.friction.C;
-   % Keep basal friction constant in the floating part
-   md.inversion.min_parameters(md.mask.ocean_levelset<0)=md.friction.C(md.mask.ocean_levelset<0);
-   md.inversion.max_parameters(md.mask.ocean_levelset<0)=md.friction.C(md.mask.ocean_levelset<0);
+   % Keep basal friction constant and 0 in the floating part
+   md.inversion.min_parameters(md.mask.ocean_levelset<0)=0;
+   md.inversion.max_parameters(md.mask.ocean_levelset<0)=0;
    
 	% Stress balance parameters
    md.stressbalance.maxiter=50;   %
@@ -307,8 +302,7 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md.stressbalance.abstol=NaN;   %
 
 	% Prepare to solve
-
-   md.cluster=generic('name',oshostname(),'np',55); %for totten 45 ideal
+   md.cluster=generic('name',oshostname(),'np',55);
    md.verbose=verbose('solution',false,'control',true);
 	md.miscellaneous.name='inversion_friction_C';
 
