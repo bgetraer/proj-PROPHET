@@ -3,10 +3,10 @@ https://github.com/bgetraer/proj-PROPHET.git
 
 The code here implements a coupled ice-ocean dynamic model of the Amundsen Sea Embayment sector of the West Antarctic Ice Sheet, using the Ice-sheet and Sea-level System Model (ISSM) and the Massachusetts Inistitute of Technology general circulation model (MITgcm). 
 
-______________________________________________________________________________________________________________________________
+_________________________________________________________________________
 ISSM can be freely accessed at:   https://github.com/ISSMteam/ISSM.git
 MITgcm can be freely accessed at: https://github.com/MITgcm/MITgcm.git
-______________________________________________________________________________________________________________________________
+_________________________________________________________________________
 
 Overview of experiment scripts:
    RUN_ISSM_INIT.m      Initialize ice sheet model
