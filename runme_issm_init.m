@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[3];
+steps=[4];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -44,7 +44,7 @@ end
 % Ice model files
 expfile='./Exp/domain.exp';
 
-org=organizer('repository',modeldir,'prefix','PROPHET_test','steps',steps);
+org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps);
 if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{ 
 	md=model(); % initialize ISSM model structure
 	% Exp/amundsenicedomain.exp {{{
@@ -159,7 +159,7 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 
 	% Velocities from MEaSUREs
 	[md.inversion.vx_obs, md.inversion.vy_obs] = interpMouginotAnt2017(md.mesh.x,md.mesh.y); % interpolated surface velocity component data (m yr^-1)
-	pos_vel_nan = find(isnan(md.inversion.vx_obs) | isnan(md.inversion.vy_obs)); % find location of NaN values
+	pos_vel_nan = (isnan(md.inversion.vx_obs) | isnan(md.inversion.vy_obs)); % find location of NaN values
 	save(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan');
 	md.inversion.vx_obs(pos_vel_nan) = 0; % fill NaN values with zero (m yr^-1)
 	md.inversion.vy_obs(pos_vel_nan) = 0; % fill NaN values with zero (m yr^-1)
@@ -344,67 +344,49 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
 
    savemodel(org,md);
 end%}}}
-if perform(org,'InversionB2'),  % Re-invert for flow law parameter B{{{
+if perform(org,'PlotInversion'),  % Examine the results of the inversion {{{
    md=loadmodel(org,'InversionC');
 
-   % new inversion with M1QN3 package
-   md.inversion=m1qn3inversion(md.inversion);
-
-   % Control general
-   md.inversion.iscontrol=1; % flag to turn on inversion
-   md.inversion.control_parameters={'MaterialsRheologyBbar'}; % invert for B
-   md.inversion.maxsteps=50; % maximum number of iterations (gradient computation)
-   md.inversion.maxiter=50;  % maximum number of function evaluations (forward run)
-   md.inversion.dxmin=0.1;   % convergence criterion: two points less than dxmin from each other (sup-norm) are considered identical
-   md.inversion.gttol=1E-6;  % convergence criterion: ||g(X)||/||g(X0)|| (g(X0): gradient at initial guess X0)
-   md.inversion.incomplete_adjoint=0; % 0 non linear viscosity; 1 linear viscosity 
-
-   % Cost functions
-	% 101: SurfaceAbsVelMisfit (fit in linear space)
-	% 103: SurfaceLogVelMisfit (fit in log space)
-	% 502: RheologyBbarAbsGradient (regularization)
-   md.inversion.cost_functions=[101 103 502]; % set the cost functions
-   md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
-	
-	% Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
-   md.inversion.cost_functions_coefficients(:,1) = 200; % coefficient for linear fit
-   md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 1E-16; % coefficient for regularization
 	load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
-   md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
-   % Controls on max/min B allowed: see Truffer & Stanton, 2015 for englacial ice temperature bounds, Cuffey & Paterson, 2010 for A and E*
-	% min: A=2.4E-24 for   0degC ice, E*=10  for max enhancement factor of Antarctic ice in strong shear
-	% max: A=6.8E-26 for -25degC ice, E*=0.6 for min enhancement factor of Antarctic ice shelves
-	lim_A = [6.8E-26, 2.4E-24];                               % limits on A (Pa^-n s^-1)
-	lim_Estar = [0.6, 10];                                    % limits on enhancement factor E* (non-dim.)
-	lim_B = (lim_A.*lim_Estar).^(-1/md.materials.rheology_n); % limits on B (Pa s^1/n)
-	md.inversion.min_parameters= min(lim_B)*ones(size(md.materials.rheology_B)); % lower bound on B (Pa s^1/n)
-   md.inversion.max_parameters= max(lim_B)*ones(size(md.materials.rheology_B)); % upper bound on B (Pa s^1/n)
-	md.inversion.min_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
-	md.inversion.max_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
 
-   % Stress balance parameters
-   md.stressbalance.maxiter=50;   %
-   md.stressbalance.reltol=NaN;   %
-   md.stressbalance.abstol=NaN;   %
+	vel_init = md.initialization.vel; % initial model velocity after inversion (m yr^-1)
+	vel_obs  = md.inversion.vel_obs;  % interpolated velocity observations (m yr^-1)
 
-   md.cluster=generic('name',oshostname(),'np',45); %for totten 45 ideal
-   md.verbose=verbose('solution',false,'control',true);
-   md.miscellaneous.name='inversion_B2';
+	vel_init(md.mask.ice_levelset>0 | pos_vel_nan)=nan; % ignore where there is no ice or where there is no observation
+	vel_obs(md.mask.ice_levelset>0 | pos_vel_nan)=nan;  % ignore where there is no ice or where there is no observation
+	
+	vel_init = vel_init(~isnan(vel_init)); % remove nan
+	vel_obs = vel_obs(~isnan(vel_obs)); % remove nan
 
-   % Solver parameters
-   md.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
-   md.toolkits.DefaultAnalysis.ksp_max_it=500;
-   md.settings.solver_residue_threshold=1e-6;
+	dvel = vel_init-vel_obs;
+	dvel(dvel==0) = 1E-15; % no exact zero values
+	dlogvel = log10(vel_init./vel_obs);
+	logdvel = log10(abs(dvel));
+	figure(1); clf;
+	subplot(1,2,1); hold on;
+	histogram(dlogvel,'numbins',100);
+	xlabel('log10(vel_m / vel_o)');
+	ylabel('count');
 
-	% Solve
-   md=solve(md,'Stressbalance'); % only extracted model
+	xline(mean(dlogvel),'k','LineWidth',1);
+   xline(mean(dlogvel)-std(dlogvel),'--k','LineWidth',1);
+   xline(mean(dlogvel)+std(dlogvel),'--k','LineWidth',1);
+	title('relative difference');
+	subtitle(sprintf('%0.1f \\pm %0.1f ',round(mean(dlogvel),2),std(dlogvel)))
 
-   % Update the full model rheology_B accordingly
-   md.materials.rheology_B = md.results.StressbalanceSolution.MaterialsRheologyBbar;
-   savemodel(org,md);
-end % }}}
+
+	subplot(1,2,2); hold on;
+   histogram(logdvel,'numbins',100);
+	xlabel('log_{10}(|vel_m - vel_o|)');
+	ylabel('count');
+
+	xline(mean(logdvel),'k','LineWidth',1);
+	xline(mean(logdvel)-std(logdvel),'--k','LineWidth',1);
+	xline(mean(logdvel)+std(logdvel),'--k','LineWidth',1);
+	title('absolute difference');
+	subtitle(sprintf('%0.1f \\pm %0.1f m/yr',10^mean(logdvel),10^std(logdvel)))
+end % }}}	
 
 % local functions {{{
 % file writing
