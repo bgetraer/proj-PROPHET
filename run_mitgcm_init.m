@@ -1,50 +1,37 @@
 % PROPHET Amundsen Sea Coupling
 % Outline:
-%	Initialize and spin up ocean model
-%  Initialize ice sheet model
-%  Run coupled 
+%  Compile MITgcm
+%	Initialize MITgcm
+%  Run spin up for MITgcm
 %
-% Experiment:
-%  Run with monthly climatology for ocean boundary conditions
-%    Each month is different but gets repeated every year
-%    The calendar is a "model" calendar:
-%      12 months of 30 days = 360 days per year
-%      Either 
+%
 
-steps=[];
+steps=[2];
 
-% experiment control{{{
-% 'CLIM'   monthly climatology 2001-2012 from Paris 2
-% 'RCP85'  ensemble average forcings from ISMIP-6
-% 'PARIS2' ensemble average forcings from Paris 2
-expname='CLIM'; % CLIM, RCP85, PARIS2
-expprefix=sprintf('PROPHET_%s_',expname); %set model name prefix
-% }}}
+experiment.name='MITgcm_initialization';
 % directory structure {{{
-mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory
-proph_dir ='/nobackup/bgetraer/issmjpl/proj-getraer/proj-PROPHET'; % base directory for this project
-% define base directories {{{
-% make code directory if needed
-% this will hold the current compilation of MITgcm
-if ~exist(fullfile(proph_dir,'code'))
-   mkdir(fullfile(proph_dir,'code'));
-end
+%mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory
+proph_dir = pwd; % base directory for this project
+% define experiment directories {{{
 % make experiments directory if needed
 % this will hold subdirectories for each model run
 if ~exist(fullfile(proph_dir,'experiments'))
    mkdir(fullfile(proph_dir,'experiments'));
 end
-% make Exp directory if needed
-% this will hold the .exp files for ISSM domain
-if ~exist(fullfile(proph_dir,'Exp'))
-	mkdir(fullfile(proph_dir,'Exp'));
-end
-% }}}
-% define experiment directories {{{
-expdir=fullfile(proph_dir,'experiments',experiment.name);
 % make this experiment directory if needed
+expdir=fullfile(proph_dir,'experiments',experiment.name);
 if ~exist(expdir)
    mkdir(expdir);
+end
+% make code directory if needed
+% this will hold the current compilation of MITgcm
+if ~exist(fullfile(expdir,'code'))
+   mkdir(fullfile(expdir,'code'));
+end
+% make input directory if needed
+% this will hold the runtime options for MITgcm
+if ~exist(fullfile(expdir,'input'))
+   mkdir(fullfile(expdir,'input'));
 end
 % make model directory if needed
 % this will hold md structures from ISSM
@@ -54,20 +41,23 @@ if ~exist(modeldir)
 end
 % }}}
 % }}}
+% Move into the experiment directory
+disp(['Moving to experiment directory: ', expdir]);
+cd(expdir); 
 % Ocean Model
 % MITgcm filenames {{{
 % compile-time files
-sizefile='./code/SIZE.h';
-pkgconffile='./code/packages.conf';
+sizefile='code/SIZE.h';
+pkgconffile='code/packages.conf';
 % run-time namelist files
-datafile='./input/data';
-dataobcsfile='./input/data.obcs';
-datashelficefile='./input/data.shelfice';
-datacalfile='./input/data.cal';
-dataexffile='./input/data.exf';
-datadiagfile='./input/data.diagnostics';
-datapkgfile='./input/data.pkg';
-eedatafile='./input/eedata';
+datafile='input/data';
+dataobcsfile='input/data.obcs';
+datashelficefile='input/data.shelfice';
+datacalfile='input/data.cal';
+dataexffile='input/data.exf';
+datadiagfile='input/data.diagnostics';
+datapkgfile='input/data.pkg';
+eedatafile='input/eedata';
 % binary input files
 bathyfile='bathy.bin';
 thetainitfile='theta.init';
@@ -114,8 +104,8 @@ nWy=1; % number of wall cells in y
 sNx=13;  % Number of X points in tile
 sNy=15;  % Number of Y points in tile
 %
-4LxOC=Lx-dx*nWx; % length of active ocean domain in x (m)
-%LyOC=Ly-dy*nWy; % length of active ocean domain in y (m)
+LxOC=Lx-dx*nWx; % length of active ocean domain in x (m)
+LyOC=Ly-dy*nWy; % length of active ocean domain in y (m)
 
 nWw=ceil(nWx/2);  % number of wall cells before x=x0_OC (excess placed on east)
 nWs=ceil(nWy/2);  % number of wall cells before y=y0_OC (excess placed on north)
@@ -522,7 +512,7 @@ DIAG_STATIS.description={'Parameter for Diagnostics of per level statistics:', .
 write_datafile(datadiagfile,{DIAG_LIST,DIAG_STATIS},'DIAGNOSTICS RUNTIME PARAMETERS');
 % }}}
 
-org=organizer('repository',modeldir,'prefix',experiment.prefix,'steps',steps);
+org=organizer('repository',modeldir,'prefix','PROPHET_mitgcm_init_','steps',steps);
 if perform(org,'CompileMITgcm'), % Compile MITgcm{{{
 	% Compile-time options {{{
 	% code/SIZE.h {{{
@@ -583,9 +573,88 @@ if perform(org,'CompileMITgcm'), % Compile MITgcm{{{
 	% }}}
 end % }}}
 if perform(org,'RunPrepMITgcm'), % Prepare MITgcm for run {{{
+	% input/data binary files {{{
+	% bathymetry
+	bathymetry = interpBedmachineAntarctica(XC,YC,'bed','linear'); % interpolate bed elevation data from BedMachine (m)
+	walls=(XC<x0_OC | XC>(LxOC+x0_OC) | YC<y0_OC | YC>(LyOC+y0_OC)); % index of wall locations
+	bathymetry(walls) = 0; % set wall bathymetry (m)
+	write_binfile(bathyfile,bathymetry); % write to binary input file
+
+	% thetainitfile
+	% saltinitfile
+	% etainitfile
+	% }}}
+	% input/data.OBCS binary files {{{
+
+	% Coordinates on the Western (left side) boundary: these are all size (Nz,Ny)
+	% U points (on the Arakawa C grid) are on xg, yc
+   % V points (on the Arakawa C grid) are on xc, yg
+   % Center points are on xc, yc
+	OBW_xc = repmat(xc(OB_I),    Nz, Ny); % x cell center for OBW
+	OBW_xg = repmat(xp(OB_I),    Nz, Ny); % x cell edge for OBW
+	OBW_yc = repmat(yc,          Nz, 1 ); % y cell center for OBW
+	OBW_yg = repmat(yp(1:end-1), Nz, 1 ); % y cell edge for OBW
+	OBW_zc = repmat(zc',         1,  Ny); % z cell center for OBW
+
+	% Coordinates on the Southern (bottom side) boundary: these are all size (Nz,Nx)
+	% U points (on the Arakawa C grid) are on xg, yc
+   % V points (on the Arakawa C grid) are on xc, yg
+   % Center points are on xc, yc
+	OBS_xc = repmat(xc,          Nz, 1 ); % x cell center for OBS
+	OBS_xg = repmat(xp(1:end-1), Nz, 1 ); % x cell edge for OBS
+	OBS_yc = repmat(yc(OB_J),    Nz, Nx); % y cell center for OBS
+	OBS_yg = repmat(yp(OB_J),    Nz, Nx); % y cell edge for OBS
+	OBC_zc = repmat(zc',         1,  Nx); % z cell center for OBS
+
+
+	warning('Using placeholder values for OBCS data');
+	uvelOBW = zeros(Nz,Ny); % x component of left boundary velocity
+	vvelOBW = zeros(Nz,Ny); % y component of left boundary velocity
+
+	uvelOBS = zeros(Nz,Nx); % % x component of bottom boundary velocity
+	vvelOBS = zeros(Nz,Nx); % % y component of bottom boundary velocity
+
+
+	% uvelOBWfile vvelOBWfile thetaOBWfile saltOBWfile
+	% uvelOBSfile vvelOBSfile thetaOBSfile saltOBSfile 
+	% }}}
+
+
+
+
+
+
 
 end % }}}
 
+if perform(org,'PlotMITgcmDomain'), % Plot the MITgcm domain {{{
+
+	EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
+      -1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
+      -1772089.1945770399,-1772089.1945770399,-1669315.4719493026];
+   % outline of ice domain in y (m)
+   EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
+      -530867.1000391102,-58750.3117179424,170008.8123696489,...
+      70446.7685740285,-420940.0927398402,-420940.0927398402];
+
+	figure(1); clf; hold on;
+	imagesc(XC,YC,reshape(bathymetry,Ny,Nx));
+	set(gca,'YDir','normal')
+	axis equal;
+	plot(EXP.x,EXP.y);
+
+	plot([min(xp) min(xp) max(xp) max(xp) min(xp)], [min(yp) max(yp) max(yp) min(yp) min(yp)],'k');
+
+	U_coordOBW = [xp(OB_I).*ones(1,Ny); yc         ]; % (1,:) x coordinates for U on the C Arakawa grid, (2,:) y coordinates for U on the C Arakawa grid
+	V_coordOBW = [xc(OB_I).*ones(1,Ny); yp(1:end-1)]; % (1,:) x coordinates for V on the C Arakawa grid, (2,:) y coordinates for V on the C Arakawa grid
+
+	U_coordOBS = [xp(1:end-1); yc(OB_J).*ones(1,Nx)]; % (1,:) x coordinates for U on the C Arakawa grid, (2,:) y coordinates for U on the C Arakawa grid
+	V_coordOBS = [xc;          yp(OB_J).*ones(1,Nx)]; % (1,:) x coordinates for V on the C Arakawa grid, (2,:) y coordinates for V on the C Arakawa grid
+end % }}}
+
+% Move back to root directory
+disp(['Moving to root directory: ',proph_dir]);
+cd(proph_dir);
 
 % local functions {{{
 % file writing
@@ -745,22 +814,10 @@ function writediagfields(fileID,N) % {{{
 		fprintf(fileID,'\n'); % line break
 	end
 end % }}}
-function write_expfile(fname,EXP) % {{{
-	% WRITE_EXPFILE writes an exp domain outline from EXP to fname
-	% INPUT: fname    .exp file to be written to
-	%        EXP      structure with fields (x,y) 
-	%          x      field with x outline values
-	%          y      field with y outline values
-
-	disp(['writing ISSM exp file to ' fname])
-	fileID = fopen(fname,'w');
-	fprintf(fileID,'## Name:domainoutline\n');
-	fprintf(fileID,'## Icon:0\n');
-	fprintf(fileID,'# Points Count  Value\n');
-	fprintf(fileID,'%i 1.0\n',length(EXP.x));
-	fprintf(fileID,'# X pos Y pos\n');
-	fprintf(fileID,'%f %f\n',[EXP.x; EXP.y]);
-	fclose(fileID);
-end 
-% }}}
+function write_binfile(fname,field) % {{{
+% write to binary input file
+	fid = fopen(fname,'w','b'); 
+	fwrite(fid,field','real*8'); 
+	fclose(fid); 
+end % }}}
 % }}}

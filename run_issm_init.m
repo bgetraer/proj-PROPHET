@@ -16,20 +16,19 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[4];
+steps=[1];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
 proph_dir =pwd; % base directory for this project
-% make Exp directory if needed
-% this will hold the .exp files for ISSM domain
-if ~exist(fullfile(proph_dir,'Exp'))
-	mkdir(fullfile(proph_dir,'Exp'));
-end
-% }}}
 % define experiment directories {{{
-expdir=fullfile(proph_dir,'experiments',experiment.name);
+% make experiments directory if needed
+% this will hold subdirectories for each model run
+if ~exist(fullfile(proph_dir,'experiments'))
+   mkdir(fullfile(proph_dir,'experiments'));
+end
 % make this experiment directory if needed
+expdir=fullfile(proph_dir,'experiments',experiment.name);
 if ~exist(expdir)
    mkdir(expdir);
 end
@@ -40,9 +39,7 @@ if ~exist(modeldir)
    mkdir(modeldir);
 end
 % }}}
-
-% Ice model files
-expfile='./Exp/domain.exp';
+% }}}
 
 org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps);
 if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{ 
@@ -58,6 +55,7 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 		-530867.1000391102,-58750.3117179424,170008.8123696489,...
 		70446.7685740285,-420940.0927398402,-420940.0927398402]; 
 	% write to file
+   expfile=fullfile(expdir,'domain.exp');	
 	write_expfile(expfile,EXP);
 	% }}}
 	% Mesh {{{
