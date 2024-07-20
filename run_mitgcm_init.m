@@ -16,28 +16,28 @@ proph_dir = pwd; % base directory for this project
 % make experiments directory if needed
 % this will hold subdirectories for each model run
 if ~exist(fullfile(proph_dir,'experiments'))
-   mkdir(fullfile(proph_dir,'experiments'));
+	mkdir(fullfile(proph_dir,'experiments'));
 end
 % make this experiment directory if needed
 expdir=fullfile(proph_dir,'experiments',experiment.name);
 if ~exist(expdir)
-   mkdir(expdir);
+	mkdir(expdir);
 end
 % make code directory if needed
 % this will hold the current compilation of MITgcm
 if ~exist(fullfile(expdir,'code'))
-   mkdir(fullfile(expdir,'code'));
+	mkdir(fullfile(expdir,'code'));
 end
 % make input directory if needed
 % this will hold the runtime options for MITgcm
 if ~exist(fullfile(expdir,'input'))
-   mkdir(fullfile(expdir,'input'));
+	mkdir(fullfile(expdir,'input'));
 end
 % make model directory if needed
 % this will hold md structures from ISSM
 modeldir=fullfile(expdir,'Models');
 if ~exist(modeldir)
-   mkdir(modeldir);
+	mkdir(modeldir);
 end
 % }}}
 % }}}
@@ -77,6 +77,10 @@ shelficetopofile='shelficetopo.bin';
 shelficemassfile='shelficemass.bin';
 shelficedmdtfile='shelficedmdt.bin';
 shelficesubglfluxfile='shelficesubglflux.bin';
+% }}}
+% climate forcing filenames {{{
+thetaforcingfile='/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_temperature_1995-2017_8km_x_60m.nc';
+saltforcingfile='/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc';
 % }}}
 % coordinate system {{{
 % A cartesian coordinate system is used with x and y following the coordinates of the Polar Stereographic projection.
@@ -574,46 +578,64 @@ if perform(org,'CompileMITgcm'), % Compile MITgcm{{{
 end % }}}
 if perform(org,'RunPrepMITgcm'), % Prepare MITgcm for run {{{
 	% input/data binary files {{{
-	% bathymetry
+	% define bathymetry {{{ 
 	bathymetry = interpBedmachineAntarctica(XC,YC,'bed','linear'); % interpolate bed elevation data from BedMachine (m)
 	walls=(XC<x0_OC | XC>(LxOC+x0_OC) | YC<y0_OC | YC>(LyOC+y0_OC)); % index of wall locations
 	bathymetry(walls) = 0; % set wall bathymetry (m)
-	write_binfile(bathyfile,bathymetry); % write to binary input file
-
+	write_binfile(bathyfile,permute(bathymetry,[2,1])); % write to binary input file with size Nx Ny
+	% }}}
+	% define initial T, S conditions {{{
 	% thetainitfile
+	[nc_data, nc_x, nc_y, nc_z] = load_ncdata(thetaforcingfile,'temperature'); % read data from nc file
+	zq=-zc'; % the z query points (m)
+	zq(zq>max(nc_z)) = max(nc_z); % nearest neighbor extrapolation for the upper layers
+	thetainit = interp3(nc_x,nc_y,nc_z',nc_data,xc,yc,zq); % interpolate theta onto cell centers (deg C)
+	write_binfile(thetainitfile,permute(thetainit,[2,1,3])); % write to binary input file with size Nx, Ny, Nz 
 	% saltinitfile
+	[nc_data, nc_x, nc_y, nc_z] = load_ncdata(saltforcingfile,'salinity'); % read data from nc file
+	zq=-zc; % the z query points (m)
+	zq(zq>max(nc_z)) = max(nc_z); % nearest neighbor extrapolation for the upper layers
+	saltinit = interp3(nc_x,nc_y,nc_z',nc_data,xc,yc,zq'); % interpolate theta onto cell centers (deg C)
+	write_binfile(saltinitfile,permute(saltinit,[2,1,3])); % write to binary input file
+	% some checks {{{
+	if any(isnan(thetainit(:)))
+		error('nan value detected in thetainit, potential problem with interpolation');
+	end
+	if any(isnan(saltinit(:)))
+		error('nan value detected in saltinit, potential problem with interpolation');
+	end
+	% }}}
+	% }}}
 	% etainitfile
 	% }}}
 	% input/data.OBCS binary files {{{
 
 	% Coordinates on the Western (left side) boundary: these are all size (Nz,Ny)
 	% U points (on the Arakawa C grid) are on xg, yc
-   % V points (on the Arakawa C grid) are on xc, yg
-   % Center points are on xc, yc
+	% V points (on the Arakawa C grid) are on xc, yg
+	% Center points are on xc, yc
 	OBW_xc = repmat(xc(OB_I),    Nz, Ny); % x cell center for OBW
 	OBW_xg = repmat(xp(OB_I),    Nz, Ny); % x cell edge for OBW
 	OBW_yc = repmat(yc,          Nz, 1 ); % y cell center for OBW
 	OBW_yg = repmat(yp(1:end-1), Nz, 1 ); % y cell edge for OBW
-	OBW_zc = repmat(zc',         1,  Ny); % z cell center for OBW
+	OBW_zc = repmat(-zc',         1,  Ny); % z cell center for OBW
 
 	% Coordinates on the Southern (bottom side) boundary: these are all size (Nz,Nx)
 	% U points (on the Arakawa C grid) are on xg, yc
-   % V points (on the Arakawa C grid) are on xc, yg
-   % Center points are on xc, yc
+	% V points (on the Arakawa C grid) are on xc, yg
+	% Center points are on xc, yc
 	OBS_xc = repmat(xc,          Nz, 1 ); % x cell center for OBS
 	OBS_xg = repmat(xp(1:end-1), Nz, 1 ); % x cell edge for OBS
 	OBS_yc = repmat(yc(OB_J),    Nz, Nx); % y cell center for OBS
 	OBS_yg = repmat(yp(OB_J),    Nz, Nx); % y cell edge for OBS
-	OBC_zc = repmat(zc',         1,  Nx); % z cell center for OBS
+	OBC_zc = repmat(-zc',         1,  Nx); % z cell center for OBS
 
-
-	warning('Using placeholder values for OBCS data');
+	warning('Using placeholder zero values for OBCS vel data');
 	uvelOBW = zeros(Nz,Ny); % x component of left boundary velocity
 	vvelOBW = zeros(Nz,Ny); % y component of left boundary velocity
 
 	uvelOBS = zeros(Nz,Nx); % % x component of bottom boundary velocity
 	vvelOBS = zeros(Nz,Nx); % % y component of bottom boundary velocity
-
 
 	% uvelOBWfile vvelOBWfile thetaOBWfile saltOBWfile
 	% uvelOBSfile vvelOBSfile thetaOBSfile saltOBSfile 
@@ -628,17 +650,21 @@ if perform(org,'RunPrepMITgcm'), % Prepare MITgcm for run {{{
 end % }}}
 
 if perform(org,'PlotMITgcmDomain'), % Plot the MITgcm domain {{{
+	x = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','x');
+	y = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','y');
+	S = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','salinity');
 
 	EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
-      -1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
-      -1772089.1945770399,-1772089.1945770399,-1669315.4719493026];
-   % outline of ice domain in y (m)
-   EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
-      -530867.1000391102,-58750.3117179424,170008.8123696489,...
-      70446.7685740285,-420940.0927398402,-420940.0927398402];
+		-1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
+		-1772089.1945770399,-1772089.1945770399,-1669315.4719493026];
+	% outline of ice domain in y (m)
+	EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
+		-530867.1000391102,-58750.3117179424,170008.8123696489,...
+		70446.7685740285,-420940.0927398402,-420940.0927398402];
 
 	figure(1); clf; hold on;
-	imagesc(XC,YC,reshape(bathymetry,Ny,Nx));
+	imagesc(x,y,S(:,:,1))
+	%imagesc(XC,YC,reshape(bathymetry,Ny,Nx));
 	set(gca,'YDir','normal')
 	axis equal;
 	plot(EXP.x,EXP.y);
@@ -815,9 +841,15 @@ function writediagfields(fileID,N) % {{{
 	end
 end % }}}
 function write_binfile(fname,field) % {{{
-% write to binary input file
+	% write to binary input file
 	fid = fopen(fname,'w','b'); 
-	fwrite(fid,field','real*8'); 
+	fwrite(fid,field,'real*8'); 
 	fclose(fid); 
 end % }}}
+function [nc_data, nc_x, nc_y, nc_z]= load_ncdata(fname,varname)
+	nc_x = ncread(fname,'x');   % load the x coordinates (m)
+	nc_y = ncread(fname,'y');   % load the y coordinates (m)
+	nc_z = ncread(fname,'z');   % load the z coordinates (m)
+	nc_data = ncread(fname,varname); % load the data field
+end
 % }}}
