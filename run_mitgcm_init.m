@@ -4,7 +4,7 @@
 %	Initialize MITgcm
 %
 
-steps=[3];
+steps=[4];
 
 experiment.name='MITgcm_initialization';
 experiment.forcing = 'CLIM'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -61,8 +61,6 @@ if 0
 		otherwise
 			error('');
 	end
-	thetaforcingfile='/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_temperature_1995-2017_8km_x_60m.nc';
-	saltforcingfile='/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc';
 	% }}}
 	% MITgcm filenames {{{
 	% compile-time files
@@ -609,7 +607,7 @@ if perform(org,'Param'), % {{{
 	mit.forcing.init_example = [mit.forcing.init_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the init files
 	field_prefix = {'T','S','U','V'}; % data fields
 	mit.forcing.field_bdry = [strcat(field_prefix,'leftbdry') strcat(field_prefix,'botbdry')]; % field names for bdry files
-	mit.forcing.field_init = strcat(field_prefix,'init'); % field names for init files
+	mit.forcing.field_init = strcat(field_prefix(1:2),'init'); % field names for init files
 	mit.forcing.Ddir = fullfile(proph_dir,'climateforcings/data'); % directory path for processed boundary forcing data
 	field_prefix_out = {'theta','salt','uvel','vvel'}; % data fields
 	mit.forcing.field_bdry_out = [strcat(field_prefix_out,'.obw'),strcat(field_prefix_out,'.obs')]; % field names for processed forcing files
@@ -803,7 +801,7 @@ if perform(org,'Param'), % {{{
 	% Save mit structure
 	savedata(org,mit);
 end % }}}
-if perform(org,'ClimateForcings'), % {{{
+if perform(org,'BoundaryForcings'), % {{{
 	mit=load(org,'Param');
 
 	D={}; % Initialize cell array for climate forcing data structures
@@ -882,6 +880,54 @@ if perform(org,'ClimateForcings'), % {{{
 			end
 		end
 	end
+end % }}}
+if perform(org,'InitialConditions'), % {{{
+	mit=load(org,'Param');
+	mit.initialization=struct();
+	
+	D={}; % Initialize cell array for climate forcing data structures
+	for i = 1:length(mit.forcing.exp)
+		% Load all members of the experiment
+		for j = 1:length(mit.forcing.member)
+			fname = [mit.forcing.init_prefix mit.forcing.exp{i} mit.forcing.member{j} mit.forcing.suffix]; % file to be loaded
+			fprintf('Loading '); ls(fullfile(mit.forcing.Ndir,fname)); % print out the file being read
+			D{j} = load(fullfile(mit.forcing.Ndir,fname)); % load data into array of structures
+		end
+		% Loop through all fields
+      for k=1:length(mit.forcing.field_init)
+			 disp(['Processing ' mit.forcing.field_init{k}]);
+         % collect field from all members
+         A = []; % matrix to collect field. dim1 is z, dim2 is x or y, dim3 is time (month), dim4 is member (1-10)
+         for j = 1:length(D)
+				A(:,:,:,j) = getfield(D{j},mit.forcing.field_init{k});
+         end
+			% take mean of field across members and horizontal dimensions
+         B = squeeze(nanmean(A,[1,2,4]));
+			%sigma = squeeze(nanstd(A,[],[1,2,4]));
+
+			x = mit.mesh.zc_N(~isnan(B));
+			b = B(~isnan(B));
+			%sigma = sigma(~isnan(B));
+			xq = mit.mesh.zc;
+			bq = interp1(x,b,xq,'linear','extrap');
+			
+			% save the average state 
+			fieldname = [mit.forcing.field_init{k}(1),'_',mit.forcing.exp{i}];
+			mit.initialization.(fieldname) = bq;
+		end
+	end
+	figure(1);clf;
+	ax1=subplot(1,2,1); hold on;
+	plot(mit.mesh.zc,mit.initialization.T_Paris2C,'linewidth',2);
+	plot(mit.mesh.zc,mit.initialization.T_RCP85,'linewidth',2);
+	xlabel('z (m)');,ylabel('T (deg C)');
+	ax2=subplot(1,2,2); hold on;
+	plot(mit.mesh.zc,mit.initialization.S_Paris2C,'linewidth',2);
+	plot(mit.mesh.zc,mit.initialization.S_RCP85,'linewidth',2);
+	xlabel('z (m)');,ylabel('S (ppt)');
+	legend('Paris2C','RCP85','location','sw');
+
+	savedata(org,mit);
 end % }}}
 if perform(org,'CompileMITgcm'), % compile MITgcm{{{
 	% Compile-time options {{{
