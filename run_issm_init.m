@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[1];
+steps=[4];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -244,7 +244,6 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    md.inversion.min_parameters= min(lim_B)*ones(size(md.materials.rheology_B)); % lower bound on B (Pa s^1/n)
    md.inversion.max_parameters= max(lim_B)*ones(size(md.materials.rheology_B)); % upper bound on B (Pa s^1/n)
    md.inversion.min_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
-   md.inversion.max_parameters(md.mask.ocean_levelset>0) = md.materials.rheology_B(md.mask.ocean_levelset>0); % do not allow B to change on grounded ice
 
    % Stress balance parameters
    md.stressbalance.maxiter=50;   %
