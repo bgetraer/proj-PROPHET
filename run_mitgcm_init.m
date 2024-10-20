@@ -1,13 +1,13 @@
 % PROPHET Amundsen Sea Coupling
 % Outline:
-%  Compile MITgcm
 %	Initialize MITgcm
-%
+%  Compile MITgcm
+%  Run MITgcm
 
-steps=[4];
+steps=[];
 
 experiment.name='MITgcm_initialization';
-experiment.forcing = 'CLIM'; % 'CLIM', 'RCP85', or 'Paris2C'
+experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
 % directory structure {{{
 %mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory
 proph_dir = pwd; % base directory for this project
@@ -48,437 +48,6 @@ if ~exist(fullfile(proph_dir,'climateforcings'))
 end
 % }}}
 % }}}
-% Move into the experiment directory
-disp(['Moving to experiment directory: ', expdir]);
-cd(expdir); 
-if 0
-	% Ocean Model
-	% climate forcing filenames {{{
-	switch experiment.forcing
-		case 'CLIM'   % monthly climatology 2001-2012 from Paris 2
-		case 'RCP85'  % ensemble average forcings from ISMIP-6
-		case 'PARIS2' % ensemble average forcings from Paris 2
-		otherwise
-			error('');
-	end
-	% }}}
-	% MITgcm filenames {{{
-	% compile-time files
-	sizefile='code/SIZE.h';
-	pkgconffile='code/packages.conf';
-	% run-time namelist files
-	datafile='input/data';
-	dataobcsfile='input/data.obcs';
-	datashelficefile='input/data.shelfice';
-	datacalfile='input/data.cal';
-	dataexffile='input/data.exf';
-	datadiagfile='input/data.diagnostics';
-	datapkgfile='input/data.pkg';
-	eedatafile='input/eedata';
-	% binary input files
-	delrfile = 'delr.bin';
-	bathyfile='bathy.bin';
-	thetainitfile='theta.init';
-	saltinitfile='salt.init';
-	etainitfile='eta.init';
-	% binary OBCS files
-	uvelOBSfile = ['uvel.obs.'  experiment.forcing];
-	vvelOBSfile = ['vvel.obs.'  experiment.forcing];
-	thetaOBSfile= ['theta.obs.' experiment.forcing];
-	saltOBSfile = ['salt.obs.'  experiment.forcing];
-	uvelOBWfile = ['uvel.obw.'  experiment.forcing];
-	vvelOBWfile = ['vvel.obw.'  experiment.forcing];
-	thetaOBWfile= ['theta.obw.' experiment.forcing];
-	saltOBWfile = ['salt.obw.'  experiment.forcing];
-	% binary SHELFICE files
-	shelficetopofile='shelficetopo.bin';
-	shelficemassfile='shelficemass.bin';
-	shelficedmdtfile='shelficedmdt.bin';
-	shelficesubglfluxfile='shelficesubglflux.bin';
-	% }}}
-	% time stepping {{{
-	nsteps=1;               % number of coupled time steps to take
-	coupledTimeStep=24*60*60; % coupling time step (s)
-	y2d=360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr)
-	y2s=y2d*24*60*60; % y2s using 'model' calendar
-	cal_t0=datetime(2013,1,1,0,0,0); % starting calendar datetime
-	% }}}
-	% Run-time options
-	% input/eedata {{{
-	EEP=struct; % initialize EEDATA structure
-	% EEPARMS: Execution Environment Parameters {{{
-	EEP.header='EEPARMS';
-	% }}}
-	write_datafile(eedatafile,{EEP},'EXECUTION ENVIRONMENT PARAMETERS');
-	% }}}
-	% input/data {{{
-	P1=struct;P2=struct;P3=struct;P4=struct;P5=struct; % initialize PARM structures
-	% PARM01: Continuous equation parameters {{{
-	% structure information
-	P1.header='PARM01';
-	P1.description='Continuous equation parameters';
-
-	% physical constants
-	P1.rhoconst = 1030; % kg/m^3
-	P1.gravity=9.81; % m/s^2
-
-	% equation of state
-	P1.eostype='''JMD95Z''';
-	P1.tRef = [num2str(Nz) '*' num2str(-1.9)]; % vertical array reference potential temp. (deg C)
-	P1.sRef = [num2str(Nz) '*' num2str(34.4)]; % vertical array reference salin. (g/kg)
-	P1.rhoNil=1000; % ref. density (kg/m^3)
-	P1.tAlpha = 3.733E-5; % thermal expansion coefficient (deg C)^-1
-	P1.sBeta  = 7.8434E-4; % haline expansion coefficient (g/kg)^-1
-	P1.HeatCapacity_cp = 3974.0; % specific heat capacity Cp (ocean) (J/kg/K)
-
-	% coriolis parameters
-	P1.selectCoriMap=0; % 0=f-plane; 1=b-plane
-	lat0=-75.0; % reference latitude (deg)
-	phi0=lat0/360*2*pi; % reference latitude (rad)
-	rotationPeriod=8.6164E+04; % MITgcm default (s)
-	omega=2*pi/rotationPeriod; % angular velocity of Earth (rad/s)
-	P1.f0=round(2*omega*sin(phi0),2,'significant'); % reference Coriolis parameter (1/s)
-	if P1.selectCoriMap==1 % beta-plane for MITgcm coriolis
-		radiusA=6.378E6; % equatorial radius (m)
-		radiusB=6.357E6; % polar radius (m)
-		radius0=1/sqrt((cos(phi0)/radiusA)^2 + (sin(phi0)/radiusB)^2); % ref. radius (m)
-		P1.beta= 2*omega*cos(phi0)/radius0; % (partial f)/(partial y) (m*s)^-1
-	end
-
-	% free surface
-	P1.rigidLid='.FALSE.'; % rigid lid off
-	P1.implicitFreeSurface='.TRUE.'; % implicit free surface on
-	P1.exactConserv='.TRUE.'; % exact total volume conservation (recompute divergence after pressure solver) on
-	P1.nonlinFreeSurf=4; % What option is this?
-	useRealFreshWaterFlux = '.TRUE.'; % Conserve volume with freshwater flux (changes free surface/sea level) 
-
-	% full and partial cells
-	P1.hFacMin = 0.2; % minimum fractional height of partial gridcell
-	P1.hFacSup=2.0;   % maximum fractional height of surface cell
-	P1.hFacInf = 0.2; % minimum fractional height of surface cell
-
-	% Momentum Equations
-	P1.vectorInvariantMomentum = '.TRUE.'; % use vector-invariant form of momentum equations
-	P1.implicitViscosity = '.TRUE.'; % compute vertical diffusive fluxes of momentum implicitly
-	P1.viscAr=1.E-4;    % Vertical Eddy Viscosity m^2/s
-	viscAhscheme='constant'; % choose between constant horizontal viscosity and gridscale/flow aware viscosity
-	switch viscAhscheme
-		case 'constant'
-			P1.viscAh=10.0; % Horizontal Eddy Viscosity m^2/s
-		case 'modifiedLeith'
-			P1.viscAhGrid=.01;  % non-dimensional Laplacian grid viscosity parameter (background, constant)
-			%P1.viscA4Grid=.001; % non-dimensional bi-harmonic grid viscosity parameter (background, constant)
-			P1.viscAhGridMax=1; % maximum non-dimensional gridscale viscosity (CFL constraint)
-			P1.viscC2leith=2; % Leith harmonic visc. factor on grad(vort), non-dim. (grid/flow aware viscosity)
-			P1.viscC2leithD=2; % Leith harmonic visc. damping factor on grad(div), non-dim. (grid/flow aware viscosity)
-		otherwise
-			error('choose valid viscAhscheme')
-	end
-	P1.bottomDragQuadratic=2.5E-3; % no-slip bottom, quadratic bottom drag
-	P1.bottomVisc_pCell='.TRUE.';  % account for partial-cell in bottom viscosity 
-	P1.selectImplicitDrag=2;       % fully implicit top/bottom drag
-	P1.selectBotDragQuadr=2;       % quadr. bottom drag discretization: use local velocity norm @u,v location, w wet-point averaging of other velocity component
-
-	% Tracer equations
-	P1.implicitDiffusion = '.TRUE.'; % compute vertical diffusive fluxes of tracers implicitly
-	P1.diffKhT= 3.; % horizontal Laplacian diffusivity of heat m^2/s
-	P1.diffKrT=5.E-5; % vertical Laplacian diffusivity of heat m^2/s
-	P1.diffKhS= 3.; % horizontal Laplacian diffusivity of salt m^2/s
-	P1.diffKrS=5.E-5; % vertical Laplacian diffusivity of salt m^2/s
-	P1.tempAdvScheme=77; % 2nd order flux limiters
-	P1.saltAdvScheme=77; % 2nd order flux limiters
-	P1.staggerTimestep = '.TRUE.'; % use staggered time stepping (thermodynamic vs. flow variables)
-
-	% input/output
-	P1.useSingleCpuIO='.TRUE.'; % only root MPI process does I/O 
-	P1.globalFiles='.TRUE.'; % write global files, not per tile
-	P1.readBinaryPrec=64; % precision used for reading binary files (32 or 64)
-	P1.debuglevel = 1; % level of printing of MITgcm activity messages/statistics (1-5)
-	% }}}
-	% PARM02: Elliptic solver parameters {{{
-	% structure information
-	P2.header='PARM02';
-	P2.description='Elliptic solver parameters';
-
-	% pressure solver
-	P2.cg2dMaxIters=1000; % upper limit on 2D conjugate gradient solver iterations
-	P2.cg2dTargetResidual=1.E-11; % 2D conjugate gradient target residual (non-dim. due to RHS normalization )
-
-	% options set by Dan. I do not know what they do
-	%P2.cg2dmincolumneps = 5;
-	%P2.pReleaseVisc=2;
-	%P2.thincolDamp=100.;
-	% }}}
-	% PARM03: Time stepping parameters {{{
-	% structure information
-	P3.header='PARM03';
-	P3.description='Time stepping parameters';
-
-	% Run Start and Duration
-	P3.nIter0=0;        % starting timestep iteration number
-	P3.deltaT=100.;     % model time step (s) 
-	P3.nTimeSteps=(coupledTimeStep/P3.deltaT); % number of model clock timesteps to execute
-
-	% Ocean Convection
-	P3.cAdjFreq = -1;   % <0 sets frequency of convective adj. scheme to deltaT (s)
-
-	% Restart/Pickup Files
-	P3.pChkPtFreq=coupledTimeStep; % permanent restart/pickup checkpoint file write interval (s)
-
-	% Frequency/Amount of Output
-	P3.monitorFreq=coupledTimeStep; % interval to write monitor output (s)
-	P3.monitorSelect=1; % 1: dynamic variables only, 2: add vorticity variables, 3: add surface variables
-	P3.dumpInitAndLast='.FALSE.'; % write out initial and last iteration model state (OFF)
-
-	% Unused settings
-	%% IN CHANNEL SCRIPT THIS HAD BEEN SET TO coupledTimeStep/deltaT + 1 BUT I THINK UNNECESSARY EXTRA STEP
-	%P3.chkPtFreq=coupledTimeStep*10; % rolling restart/pickup checkpoint file write interval (s)
-	%P3.dumpFreq=coupledTimeStep*10; % interval to write model state/snapshot data (s)
-	% }}}
-	% PARM04: Gridding parameters {{{
-	% structure information
-	P4.header='PARM04';
-	P4.description='Gridding parameters';
-
-	% coordinate system
-	P4.usingCartesianGrid='.TRUE.'; % use Cartesian coordinates 
-	%P4.delr=[num2str(Nz) '*' num2str(dz)]; % vertical grid spacing 1D array (m) 
-	P4.delRFile=['''' delrfile '''']; % vertical grid spacing 1D array (m) 
-	P4.dxSpacing=dx; % x-axis uniform grid spacing (m)
-	P4.dySpacing=dy; % y-axis uniform grid spacing (m)
-	P4.xgOrigin=x0; % west edge x-axis origin (m)
-	P4.ygOrigin=y0; % south edge y-axis origin (m)
-	% }}}
-	% PARM05: Input datasets {{{
-	% structure information
-	P5.header='PARM05';
-	P5.description='Input datasets';
-
-	% input files
-	P5.bathyfile=['''' bathyfile '''']; % filename for 2D ocean bathymetry (m)
-	P5.hydrogthetafile=['''' thetainitfile '''']; % filename for 3D specification of initial potential temperature (deg C)
-	P5.hydrogsaltfile=['''' saltinitfile '''']; % filename for 3D specification of initial salinity (g/kg)
-	P5.psurfinitfile=['''' etainitfile '''']; % filename for 2D specification of initial free surface position (m)
-	% }}}
-	write_datafile(datafile,{P1,P2,P3,P4,P5},'MODEL PARAMETERS');
-	% }}}
-	% input/data.pkg {{{
-	PKG=struct; % initialize PACKAGES structure
-	% PACKAGES: run-time flags for packages to use {{{
-	PKG.header='PACKAGES';
-
-	PKG.useDiagnostics='.TRUE.';
-	PKG.useOBCS='.TRUE.';
-	PKG.useShelfIce='.TRUE.';
-	PKG.useCAL='.FALSE.';
-	PKG.useEXF='.FALSE.';
-	% }}}
-	write_datafile(datapkgfile,{PKG},'Packages');
-	% }}}
-	% Run-time package options
-	% input/data.obcs {{{
-	OBCS_P1=struct;OBCS_P2=struct;OBCS_P3=struct; % initialize OBCS_PARM structures
-	% OBCS_PARM01: Open boundaries {{{
-	OBCS_P1.header='OBCS_PARM01';
-	OBCS_P1.description='Open boundaries';
-
-	% Southern Boundary (bottom y boundary, not geographic south)
-	OB_J=nWs+1; % j index wrt Ny where the southern OBCS is set
-	OBCS_P1.OB_Jsouth=[num2str(Nx) '*' num2str(OB_J)]; % Nx-vector of J-indices (w.r.t. Ny) of Southern OB at each I-position (w.r.t. Nx)
-	OBCS_P1.OBSuFile=['''' uvelOBSfile '''']; % Nx by Nz matrix of u velocity at Southern OB
-	OBCS_P1.OBSvFile=['''' vvelOBSfile '''']; % Nx by Nz matrix of v velocity at Southern OB
-	OBCS_P1.OBStFile=['''' thetaOBSfile '''']; % Nx by Nz matrix of pot. temp. at Southern OB
-	OBCS_P1.OBSsFile=['''' saltOBSfile '''']; % Nx by Nz matrix of salin. at Southern OB
-
-	% Western Boundary (lefthand x boundary, not geographic west)
-	OB_I=nWw+1; % i index wrt Nx where the western OBCS is set
-	OBCS_P1.OB_Iwest=[num2str(Ny) '*' num2str(OB_I)];  % Ny-vector of I-indices (w.r.t. Nx) of Western OB at each J-position (w.r.t. Ny)
-	OBCS_P1.OBWuFile=['''' uvelOBWfile '''']; % Nx by Nz matrix of u velocity at Western OB
-	OBCS_P1.OBWvFile=['''' vvelOBWfile '''']; % Nx by Nz matrix of v velocity at Western OB
-	OBCS_P1.OBWtFile=['''' thetaOBWfile '''']; % Nx by Nz matrix of pot. temp. at Western OB
-	OBCS_P1.OBWsFile=['''' saltOBWfile '''']; % Nx by Nz matrix of salin. at Western OB
-
-	OBCS_P1.useOBCSprescribe='.TRUE.'; % prescribe OB conditions
-	OBCS_P1.useOBCSbalance='.TRUE.'; % use OB balance
-	OBCS_P1.OBCS_balanceFacN=1.0; % balance factor for N OB
-	OBCS_P1.OBCS_balanceFacW=1.0; % balance factor for W OB
-
-	% Sponge layer
-	useOBCSsponge=0; % on or off
-	if useOBCSsponge==1
-		OBCS_P1.useOBCSsponge='.TRUE.';    % use sponge layers
-		OBCS_P1.useLinearSponge='.TRUE.';  % use linear sponge layer
-	end
-	% }}}
-	% OBCS_PARM02: Orlanski parameters {{{
-	OBCS_P2.header='OBCS_PARM02';
-	OBCS_P2.description='Orlanski parameters';
-	% }}}
-	% OBCS_PARM03: Sponge layer parameters {{{
-	OBCS_P3.header='OBCS_PARM03';
-	OBCS_P3.description='Sponge layer parameters';
-
-	if useOBCSsponge==1
-		OBCS_P3.spongeThickness=5; % sponge layer thickness (in grid points)
-		OBCS_P3.Vrelaxobcsbound=coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
-		OBCS_P3.Urelaxobcsbound=coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a meridional OB (s) 
-	end
-	% }}}
-	write_datafile(dataobcsfile,{OBCS_P1,OBCS_P2, OBCS_P3},'OBCS RUNTIME PARAMETERS');
-	% }}}
-	% input/data.shelfice {{{
-	SHELFICE_PARM01=struct; % initialize SHELFICE_PARM structure
-	% SHELFICE_PARM01: Parameters for SHELFICE package {{{
-	SHELFICE_P1.header='SHELFICE_PARM01';
-
-	% general options
-	SHELFICE_P1.SHELFICEwriteState='.TRUE.'; % write ice shelf state to file
-	SHELFICE_P1.SHELFICEconserve='.TRUE.'; % use conservative form of temperature boundary conditions
-	SHELFICE_P1.SHELFICEMassStepping = '.TRUE.'; % recalculate ice shelf mass at every time step
-
-	% input files
-	SHELFICE_P1.SHELFICEtopoFile=['''' shelficetopofile '''']; % filename for under-ice topography of ice shelves
-	SHELFICE_P1.SHELFICEmassFile=['''' shelficemassfile '''']; % filename for mass of ice shelves
-	SHELFICE_P1.SHELFICEMassDynTendFile=['''' shelficedmdtfile '''']; % filename for mass tendency of ice shelves
-
-	% boundary layer options
-	SHELFICE_P1.SHELFICEboundaryLayer='.TRUE.'; % use simple boundary layer mixing parameterization
-	SHELFICE_P1.SHI_withBL_realFWflux='.TRUE.'; % use real-FW flux from boundary layer
-	%SHIELFICE_P1.SHI_withBL_uStarTopDz='.TRUE.'; % compute uStar from uVel, vVel averaged over top Dz thickness
-
-	% thermodynamic exchange options
-	SHELFICE_P1.SHELFICEuseGammaFrict='.TRUE.'; % use velocity dependent exchange coefficients (Holland and Jenkins 1999) 
-	SHELFICE_P1.SHELFICEheatTransCoeff=0.0135; % transfer coefficient for temperature (m/s)
-	SHELFICE_P1.SHELFICEsaltTransCoeff=0.000265; % transfer coefficient for salinity (m/s)
-
-	% drag options
-	SHELFICE_P1.SHELFICEDragQuadratic=.006; % quadratic drag coefficient at bottom ice shelf (non-dim.)
-	SHELFICE_P1.shiCdrag=SHELFICE_P1.SHELFICEDragQuadratic; % set to be the same
-
-	% ice draft free-surface remeshing options
-	SHELFICE_P1.SHELFICERemeshFrequency=3600.0; % how often to remesh the surface cells (s)
-	SHELFICE_P1.SHELFICESplitThreshold=1.3; % maximum fractional height of ice shelf cavity surface cell
-	SHELFICE_P1.SHELFICEMergeThreshold=.29; % minimum fractional height of ice shelf cavity surface cell 
-
-	% subglacial discharge options
-	addrunoff=0;
-	if addrunoff==1
-		SHELFICE_P1.SHELFICEaddrunoff='.TRUE.'; % use runoff
-		SHELFICE_P1.SHELFICESubglFluxFile=['''' shelficesubglfluxfile '''']; % filename for subglacial runoff specification
-	end
-
-	% Dan's options, i think related to the modified melt rate at depth
-	%SHELFICE_P1.SHELFICE_massmin_trueDens='.TRUE.';
-	%SHELFICE_P1.SHELFICE_conserve_ssh='.TRUE.';
-	%SHELFICE_P1.SHELFICEdepthMinMelt=10.;
-	%SHELFICE_P1.SHELFICE_transition_gamma='.FALSE.'
-	%SHELFICE_P1.SHELFICETransGammaThickness=0.
-	% }}}
-	write_datafile(datashelficefile,{SHELFICE_P1},'SHELFICE RUNTIME PARAMETERS');
-	% }}}
-	% input/data.cal {{{
-	CAL=struct; % intialize CAL structure
-	% CAL_NML: The calendar package namelist {{{
-	CAL.header='CAL_NML';
-
-	CAL.TheCalendar='model'; % choose 'model' calendar
-	CAL.startdate_1=string(cal_t0,'yyyyMMdd'); % YYYYMMDD of start date
-	CAL.startDate_2=string(cal_t0,'hhmmss');   % HHMMSS of start date
-	% Benjy: I am not sure exactly what calendarDumps does.
-	CAL.calendarDumps='.FALSE.'; % align the output with calendar months?
-	% }}}
-	write_datafile(datacalfile,{CAL},'CALENDAR PARAMETERS');
-	% }}}
-	% input/data.exf {{{
-	switch experiment.name
-		case 'CLIM'   % monthly climatology 2001-2012 from Paris 2
-		case 'RCP85'  % ensemble average forcings from ISMIP-6
-		case 'PARIS2' % ensemble average forcings from Paris 2
-	end
-	EXF1=struct; EXF2=struct; EXF3=struct; EXF4=struct; EXF_OBCS=struct; % intialize EXF structures
-	% EXF_NML_01: External Forcings namelist 1 {{{
-	EXF1.header='EXF_NML_01';
-	% }}}
-	% EXF_NML_02: External Forcings namelist 2 {{{
-	EXF2.header='EXF_NML_02';
-	% }}}
-	% EXF_NML_03: External Forcings namelist 3 {{{
-	EXF3.header='EXF_NML_03';
-	% }}}
-	% EXF_NML_04: External Forcings namelist 4 {{{
-	EXF4.header='EXF_NML_04';
-	% }}}
-	% EXF_OBCS: External Forcings OBCS options {{{
-	EXF_OBCS.header='EXF_NML_EXF_OBCS';
-	EXF_OBCS.useOBCSYearlyFields = '.TRUE.'; 
-	obcsWstartdate2 = 20051216; % W boundary - YYYYMMDD of start date
-	obcsWperiod     = -1.0;     % period
-	obcsSstartdate1 = 20051216; % S boundary - YYYYMMDD of start date
-	obcsSperiod     = -1.0;     % period
-	% }}}
-	write_datafile(dataexffile,{EXF1,EXF2,EXF3,EXF4,EXF_OBCS},'EXTERNAL FORCINGS PARAMETERS');
-	% }}}
-	% input/data.diagnostics {{{
-	DIAG_LIST=struct; DIAG_STATIS=struct; % intialize DIAG structures
-	% DIAGNOSTICS_LIST: Diagnostic Package Choices {{{
-	DIAG_LIST.header='DIAGNOSTICS_LIST';
-	DIAG_LIST.description={'Diagnostic Package Choices', ...
-		'--------------------', ...
-		'  dumpAtLast (logical): always write output at the end of simulation (default=F)', ...
-		'  diag_mnc   (logical): write to NetCDF files (default=useMNC)', ...
-		'--for each output-stream:', ...
-		'  fileName(n) : prefix of the output file name (max 80c long) for outp.stream n', ...
-		'  frequency(n):< 0 : write snap-shot output every |frequency| seconds', ...
-		'               > 0 : write time-average output every frequency seconds', ...
-		'  timePhase(n)     : write at time = timePhase + multiple of |frequency|', ...
-		'    averagingFreq  : frequency (in s) for periodic averaging interval', ...
-		'    averagingPhase : phase     (in s) for periodic averaging interval', ...
-		'    repeatCycle    : number of averaging intervals in 1 cycle', ...
-		'  levels(:,n) : list of levels to write to file (Notes: declared as REAL)', ...
-		'                when this entry is missing, select all common levels of this list', ...
-		'  fields(:,n) : list of selected diagnostics fields (8.c) in outp.stream n', ...
-		'                (see "available_diagnostics.log" file for the full list of diags)', ...
-		'  missing_value(n) : missing value for real-type fields in output file "n"', ...
-		'  fileFlags(n)     : specific code (8c string) for output file "n"', ...
-		'--------------------'};
-
-	% Output Stream 1: surfDiag
-	DIAG_LIST.N(1).filename='''surfDiag''';
-	DIAG_LIST.N(1).frequency=86400;
-	DIAG_LIST.N(1).fields={'SHIfwFlx','SHI_mass','SHIRshel','ETAN    ','SHIuStar','SHIForcT'};
-
-	% Output Stream 2: dynDiag
-	DIAG_LIST.N(2).filename='''dynDiag''';
-	DIAG_LIST.N(2).frequency=2592000.;
-	DIAG_LIST.N(2).fields={'UVEL    ','VVEL    ','WVEL    ','THETA   ','SALT    '};
-
-	% Output Stream 3: meltDiag
-	DIAG_LIST.N(3).filename='''meltDiag''';
-	DIAG_LIST.N(3).frequency=864000.;
-	DIAG_LIST.N(3).fields={'SHIfwFlx'};
-	% }}}
-	% DIAG_STATIS_PARMS: Diagnostic Per Level Statistics {{{
-	DIAG_STATIS.header='DIAG_STATIS_PARMS';
-	DIAG_STATIS.description={'Parameter for Diagnostics of per level statistics:', ...
-		'--------------------', ...
-		'  diagSt_mnc (logical): write stat-diags to NetCDF files (default=diag_mnc)', ...
-		'  diagSt_regMaskFile : file containing the region-mask to read-in', ...
-		'  nSetRegMskFile   : number of region-mask sets within the region-mask file', ...
-		'  set_regMask(i)   : region-mask set-index that identifies the region "i"', ...
-		'  val_regMask(i)   : region "i" identifier value in the region mask', ...
-		'--for each output-stream:', ...
-		'  stat_fName(n) : prefix of the output file name (max 80c long) for outp.stream n', ...
-		'  stat_freq(n):< 0 : write snap-shot output every |stat_freq| seconds', ...
-		'               > 0 : write time-average output every stat_freq seconds', ...
-		'  stat_phase(n)    : write at time = stat_phase + multiple of |stat_freq|', ...
-		'  stat_region(:,n) : list of "regions" (default: 1 region only=global)', ...
-		'  stat_fields(:,n) : list of selected diagnostics fields (8.c) in outp.stream n', ...
-		'                (see "available_diagnostics.log" file for the full list of diags)', ...
-		'--------------------'};
-	% }}}
-	write_datafile(datadiagfile,{DIAG_LIST,DIAG_STATIS},'DIAGNOSTICS RUNTIME PARAMETERS');
-	% }}}
-end
 % suppress warnings {{{
 wid = {'MATLAB:hg:AutoSoftwareOpenGL','MATLAB:polyshape:repairedBySimplify'};
 for i=1:length(wid)
@@ -486,21 +55,83 @@ for i=1:length(wid)
 end
 % }}}
 org=organizer('repository',modeldir,'prefix','PROPHET_mitgcm_init_','steps',steps);
-if perform(org,'Mesh'), % {{{
-	mit=mitgcmstruct(); % initialize model parameter structure that will store information for MITgcm
+% Move into the experiment directory
+disp(['Moving to experiment directory: ', expdir]);
+cd(expdir); 
 
-	% Vertical discretization
+% These steps are the same for each experiment
+if perform(org,'MeshInit'), % {{{	
+	mit = struct(); % initialize model parameter structure
+	% Directory and filename information
+	% climate forcing filenames {{{
+	% There are two experiments from Naughten et al., 2023 (Paris2C and RCP85), each with 10 members.
+	% There are two types of files: 
+	%    bdry files which give the ocean state interpolated in x and y at the bottom and left
+	%       boundaries, for each month between 2010--2100
+	%    init files which give the ocean state interpolated in x and y across the entire domain for 
+	%       the initial state of Jan 2010.
+	%  Files have been interpolated from the original output data by Dan Goldberg.
+	mit.forcing = struct();
+	mit.forcing.Ndir = fullfile(proph_dir,'climateforcings/naughten2023_data'); % directory path for unprocessed Naughten data
+	mit.forcing.bdry_prefix = 'bdryDatapaholPy'; % prefix for boundary forcing files
+	mit.forcing.init_prefix = 'initpaholPy'; % prefix for initial state files
+	mit.forcing.exp = {'Paris2C', 'RCP85'}; % string for climate experiment 
+	mit.forcing.member = sprintfc('%03.0f',[1:10]); % string for member
+	mit.forcing.suffix = 'benjy.mat'; % suffix for all files
+	mit.forcing.bdry_example = [mit.forcing.bdry_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the bdry files
+	mit.forcing.init_example = [mit.forcing.init_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the init files
+	mit.forcing.field_bdry = {'Tleftbdry','Sleftbdry','Uleftbdry','Tbotbdry','Sbotbdry','Vbotbdry'};  % field names for bdry files
+	mit.forcing.field_init = {'Tinit','Sinit'}; % field names for init files
+	mit.forcing.Ddir = fullfile(proph_dir,'climateforcings/data'); % directory path for processed boundary forcing data
+	mit.forcing.field_bdry_out = {'theta.obw','salt.obw','uvel.obw','theta.obs','salt.obs','vvel.obs'}; % data fields
+	mit.forcing.field_init_out = {'theta.init','salt.init'}; % data fields
+	% }}}
+	% MITgcm filenames {{{
+	mit.fname = struct();
+	% compile-time files
+	mit.fname.sizefile='code/SIZE.h';
+	mit.fname.pkgconffile='code/packages.conf';
+	% run-time namelist files
+	mit.fname.datafile='input/data';
+	mit.fname.dataobcsfile='input/data.obcs';
+	mit.fname.datashelficefile='input/data.shelfice';
+	mit.fname.datacalfile='input/data.cal';
+	mit.fname.dataexffile='input/data.exf';
+	mit.fname.datadiagfile='input/data.diagnostics';
+	mit.fname.datapkgfile='input/data.pkg';
+	mit.fname.eedatafile='input/eedata';
+	% binary input files
+	mit.fname.delrfile = 'delr.bin';
+	mit.fname.bathyfile='bathy.bin';
+	mit.fname.thetainitfile='theta.init';
+	mit.fname.saltinitfile='salt.init';
+	mit.fname.etainitfile='eta.init';
+	% binary OBCS files  WITHOUT THE EXPERIMENT SUFFIX (i.e. Paris2, RCP85)
+	mit.fname.thetaOBWfile= ['theta.obw.' ];
+	mit.fname.saltOBWfile = ['salt.obw.'  ];
+	mit.fname.uvelOBWfile = ['uvel.obw.'  ];
+	mit.fname.thetaOBSfile= ['theta.obs.' ];
+	mit.fname.saltOBSfile = ['salt.obs.'  ];
+	mit.fname.vvelOBSfile = ['vvel.obs.'  ];
+	% binary SHELFICE files
+	mit.fname.shelficetopofile='shelficetopo.bin';
+	mit.fname.shelficemassfile='shelficemass.bin';
+	mit.fname.shelficedmdtfile='shelficedmdt.bin';
+	mit.fname.shelficesubglfluxfile='shelficesubglflux.bin';
+	% }}}
+	% Generate mesh
+	% Vertical discretization {{{
 	% The vertical grid is defined by the "cell centered" approach (see MITgcm readthedocs 2.11.5) and is defined by the vector delzF
 	% which provides the thickness of the cells. Here, the vertical grid is non-constant, varying from 10m at the surface to a maximum
 	% defined by delzF_max at depth. Between these cell thicknesses, the grid spacing is lifted directly from Naughten et al., 2023.
-	fname = fullfile(proph_dir,'climateforcings/naughten2023_data/initpaholPyParis2C001benjy.mat');
+	fname = fullfile(mit.forcing.Ndir, mit.forcing.init_example);
 	zc_N = getfield(load(fname,'z'),'z');     % Naughten2023 cell center locations in z (m)
 	zp_N = zeros(size(zc_N));                 % Initialize vertical cell edge locations in z (m)
 	for i=1:length(zp_N)
 		zp_N(i+1) = 2*zc_N(i) - zp_N(i);       % Naughten2023 vertical cell edge locations in z (m)
 	end
-	delzF_N = diff(zp_N);                     % Naughten2023 vertical cell thickness (m)
-	delzC_N = diff([zp_N(1) zc_N zp_N(end)]); % Naughten2023 vertical cell center spacing (m)
+	delzF_N = abs(diff(zp_N));                     % Naughten2023 vertical cell thickness (m)
+	delzC_N = abs(diff([zp_N(1) zc_N zp_N(end)])); % Naughten2023 vertical cell center spacing (m)
 
 	% Here, we cap the cell thickness at delzF_max, and use the same cell spacing as Naughten up
 	% until that limit, followed by cells of uniform delzF_max thickness until we reach the lowest
@@ -508,19 +139,19 @@ if perform(org,'Mesh'), % {{{
 	zmin = -2.067E3; % minimum bathymetry, from B_dagger, which actually is calculated later.(m)
 	% Calculate the vertical cell thickness
 	delzF_max = 32.5; % max vertical spacing (m)
-	delzF_upper = delzF_N(abs(delzF_N)<=delzF_max); % use the same vertical spacing as Naughten in upper column (m)
-	delzF_lower = repmat(-delzF_max,1,abs(round((zmin/delzF_max)))); % use constant spacing of delzF_max in the upper column (m)
+	delzF_upper = delzF_N(delzF_N<=delzF_max); % use the same vertical spacing as Naughten in upper column (m)
+	delzF_lower = repmat(delzF_max,1,abs(round((zmin/delzF_max)))); % use constant spacing of delzF_max in the upper column (m)
 	delzF = [delzF_upper delzF_lower]; % vertical cell thickness (m)
 	% Calculate the vertical cell edge locations and center spacing
-	zp = [0 cumsum(delzF)];
+	zp = [0 cumsum(-delzF)];
 	z_end = find(zp<zmin,1); % index to terminate the vertical grid
 	zp = zp(1:z_end);                 % vertical cell edge locations in z (m)
 	delzF = delzF(1:z_end-1);         % vertical cell thickness in z (m)
-	zc = zp(1:end-1) + 0.5*delzF;     % cell center locations in z (m)
+	zc = zp(1:end-1) - 0.5*delzF;     % cell center locations in z (m)
 	% Calculate the vertical cell center spacing
-	delzC = diff([zp(1) zc zp(end)]); % vertical cell center spacing (m)
-
-	% Horizontal discretization
+	delzC = abs(diff([zp(1) zc zp(end)])); % vertical cell center spacing (m)
+	% }}}
+	% Horizontal discretization {{{
 	% A cartesian coordinate system is used with x and y following the coordinates of the Polar Stereographic projection with a standard
 	% parallel of 71 deg S.
 	% At the Amundsen sea, the projection places North roughly in the -x direcion, East in +y, South in +x, West in -y.
@@ -558,11 +189,11 @@ if perform(org,'Mesh'), % {{{
 	xc=xp(1:end-1)+0.5*dx; % location of cell centers in x (m)
 	yc=yp(1:end-1)+0.5*dy; % location of cell centers in y (m)
 	%zc=zp(1:end-1)+0.5*dz; % location of cell centers in z (m)
-
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% Save mesh to mit structure
+	% }}}
+	% Save mesh to mit structure {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% PROPHET mesh
+	mit.mesh = struct();
 	mit.mesh.delxF = dx; % horizontal spacing between cell faces in x (m)
 	mit.mesh.delyF = dy; % horizontal spacing between cell faces in y (m)
 	mit.mesh.delzF = delzF; % vertical spacing between cell faces (m)
@@ -581,42 +212,370 @@ if perform(org,'Mesh'), % {{{
 	mit.mesh.delzF_N = delzF_N; % Naughten2023 vertical spacing between cell faces (m)
 	mit.mesh.delzC_N = delzC_N; % Naughten2023 vertical spacing between cell centers (m)
 	[mit.mesh.XC_N,mit.mesh.YC_N,mit.mesh.ZC_N]=meshgrid(xc,yc,zc_N);  % Naughten2023 cell center locations in x, y, and z (m)
+	% write delRfile
+	fname = ['input/' mit.fname.delrfile];
+	disp(['writing mit.mesh.delzF to ' fname]);
+	write_binfile(fname,mit.mesh.delzF);
+	% }}}
+	% Run-time options
+	% input/eedata {{{
+	EEP=struct; % initialize EEDATA structure
+	% EEPARMS: Execution Environment Parameters {{{
+	EEP.header='EEPARMS';
+	% }}}
+	mit.inputdata.EEP={EEP};
+	% }}}
+	% input/data {{{
+	P1=struct;P2=struct;P3=struct;P4=struct;P5=struct; % initialize PARM structures
+	% PARM01: Continuous equation parameters {{{
+	% structure information
+	P1.header='PARM01';
+	P1.description='Continuous equation parameters';
 
+	% physical constants
+	P1.rhoConst = 1030; % vertically constant reference density (Boussinesq) (kg/m3)
+	P1.gravity=9.81; % gravitational acceleration (m/s2)
+
+	% equation of state
+	P1.eostype='''JMD95Z''';
+	P1.tRefFile = ['''' mit.fname.saltinitfile '''']; % filename for vertical profile of init. and ref. salin. (g/kg)
+	P1.sRefFile = ['''' mit.fname.thetainitfile '''']; % filename for vertical profile of init. and ref. potential temp. (deg C)
+	P1.rhoNil=1000; % ref. density for linear EOS (kg/m^3)
+	P1.tAlpha = 3.733E-5; % thermal expansion coefficient (deg C)^-1
+	P1.sBeta  = 7.8434E-4; % haline expansion coefficient (g/kg)^-1
+	P1.HeatCapacity_cp = 3974.0; % specific heat capacity Cp (ocean) (J/kg/K)
+	% coriolis parameters
+	P1.selectCoriMap=0; % 0=f-plane; 1=b-plane
+	lat0=-75.0; % reference latitude (deg)
+	phi0=lat0/360*2*pi; % reference latitude (rad)
+	rotationPeriod=8.6164E+04; % MITgcm default (s)
+	omega=2*pi/rotationPeriod; % angular velocity of Earth (rad/s)
+	P1.f0=round(2*omega*sin(phi0),2,'significant'); % reference Coriolis parameter (1/s)
+	if P1.selectCoriMap==1 % beta-plane for MITgcm coriolis
+		radiusA=6.378E6; % equatorial radius (m)
+		radiusB=6.357E6; % polar radius (m)
+		radius0=1/sqrt((cos(phi0)/radiusA)^2 + (sin(phi0)/radiusB)^2); % ref. radius (m)
+		P1.beta= 2*omega*cos(phi0)/radius0; % (partial f)/(partial y) (m*s)^-1
+	end
+
+	% free surface
+	P1.rigidLid='.FALSE.'; % rigid lid off
+	P1.implicitFreeSurface='.TRUE.'; % implicit free surface on
+	P1.exactConserv='.TRUE.'; % exact total volume conservation (recompute divergence after pressure solver) on
+	P1.nonlinFreeSurf=4; % What option is this?
+	useRealFreshWaterFlux = '.TRUE.'; % Conserve volume with freshwater flux (changes free surface/sea level)
+
+	% full and partial cells
+	P1.hFacMin = 0.2; % minimum fractional height of partial gridcell
+	P1.hFacSup = 2.0;   % maximum fractional height of surface cell
+	P1.hFacInf = 0.2; % minimum fractional height of surface cell
+
+	% Momentum Equations
+	P1.vectorInvariantMomentum = '.TRUE.'; % use vector-invariant form of momentum equations
+	P1.implicitViscosity = '.TRUE.'; % compute vertical diffusive fluxes of momentum implicitly
+	P1.viscAr=1.E-4;    % Vertical Eddy Viscosity m^2/s
+	viscAhscheme='constant'; % choose between constant horizontal viscosity and gridscale/flow aware viscosity
+	switch viscAhscheme
+		case 'constant'
+			P1.viscAh=10.0; % Horizontal Eddy Viscosity m^2/s
+		case 'modifiedLeith'
+			P1.viscAhGrid=.01;  % non-dimensional Laplacian grid viscosity parameter (background, constant)
+			%P1.viscA4Grid=.001; % non-dimensional bi-harmonic grid viscosity parameter (background, constant)
+			P1.viscAhGridMax=1; % maximum non-dimensional gridscale viscosity (CFL constraint)
+			P1.viscC2leith=2; % Leith harmonic visc. factor on grad(vort), non-dim. (grid/flow aware viscosity)
+			P1.viscC2leithD=2; % Leith harmonic visc. damping factor on grad(div), non-dim. (grid/flow aware viscosity)
+		otherwise
+			error('choose valid viscAhscheme')
+	end
+	P1.bottomDragQuadratic=2.5E-3; % no-slip bottom, quadratic bottom drag
+	P1.bottomVisc_pCell='.TRUE.';  % account for partial-cell in bottom viscosity
+	P1.selectImplicitDrag=2;       % fully implicit top/bottom drag
+	P1.selectBotDragQuadr=2;       % quadr. bottom drag discretization: use local velocity norm @u,v location, w wet-point averaging of other velocity component
+
+	% Tracer equations
+	P1.implicitDiffusion = '.TRUE.'; % compute vertical diffusive fluxes of tracers implicitly
+	P1.diffKhT= 3.; % horizontal Laplacian diffusivity of heat m^2/s
+	P1.diffKrT=5.E-5; % vertical Laplacian diffusivity of heat m^2/s
+	P1.diffKhS= 3.; % horizontal Laplacian diffusivity of salt m^2/s
+	P1.diffKrS=5.E-5; % vertical Laplacian diffusivity of salt m^2/s
+	P1.tempAdvScheme=77; % 2nd order flux limiters
+	P1.saltAdvScheme=77; % 2nd order flux limiters
+	P1.staggerTimestep = '.TRUE.'; % use staggered time stepping (thermodynamic vs. flow variables)
+
+	% input/output
+	P1.useSingleCpuIO='.TRUE.'; % only root MPI process does I/O
+	P1.globalFiles='.TRUE.'; % write global files, not per tile
+	P1.readBinaryPrec=64; % precision used for reading binary files (32 or 64)
+	P1.debuglevel = 1; % level of printing of MITgcm activity messages/statistics (1-5)
+	% }}}
+	% PARM02: Elliptic solver parameters {{{
+	% structure information
+	P2.header='PARM02';
+	P2.description='Elliptic solver parameters';
+
+	% pressure solver
+	P2.cg2dMaxIters=1000; % upper limit on 2D conjugate gradient solver iterations
+	P2.cg2dTargetResidual=1.E-11; % 2D conjugate gradient target residual (non-dim. due to RHS normalization )
+
+	% options set by Dan. I do not know what they do
+	%P2.cg2dmincolumneps = 5;
+	%P2.pReleaseVisc=2;
+	%P2.thincolDamp=100.;
+	% }}}
+	% PARM03: Time stepping parameters {{{
+	% structure information
+	P3.header='PARM03';
+	P3.description='Time stepping parameters';
+
+	% Run Start and Duration
+	P3.nIter0=[];     % starting timestep iteration number
+	P3.deltaT=[];     % model time step (s)
+	P3.nTimeSteps=[]; % number of model clock timesteps to execute
+
+	% Ocean Convection
+	P3.cAdjFreq = -1; % <0 sets frequency of convective adj. scheme to deltaT (s)
+
+	% Restart/Pickup Files
+	P3.pChkPtFreq=[]; % permanent restart/pickup checkpoint file write interval (s)
+	P3.ChkPtFreq=[]; % rolling restart/pickup checkpoint file write interval (s)
+
+	% Frequency/Amount of Output
+	P3.monitorFreq=[];  % interval to write monitor output (s)
+	P3.monitorSelect=1; % 1: dynamic variables only, 2: add vorticity variables, 3: add surface variables
+	P3.dumpInitAndLast='.FALSE.'; % write out initial and last iteration model state (OFF)
+	% }}}
+	% PARM04: Gridding parameters {{{
+	% structure information
+	P4.header='PARM04';
+	P4.description='Gridding parameters';
+
+	% coordinate system
+	P4.usingCartesianGrid='.TRUE.'; % use Cartesian coordinates
+	%P4.delr=[num2str(Nz) '*' num2str(dz)]; % vertical grid spacing 1D array (m)
+	P4.delRFile=['''' mit.fname.delrfile '''']; % vertical grid spacing 1D array (m)
+	P4.dxSpacing=dx; % x-axis uniform grid spacing (m)
+	P4.dySpacing=dy; % y-axis uniform grid spacing (m)
+	P4.xgOrigin=x0; % west edge x-axis origin (m)
+	P4.ygOrigin=y0; % south edge y-axis origin (m)
+	% }}}
+	% PARM05: Input datasets {{{
+	% structure information
+	P5.header='PARM05';
+	P5.description='Input datasets';
+
+	% input files
+	P5.bathyfile=['''' mit.fname.bathyfile '''']; % filename for 2D ocean bathymetry (m)
+	P5.psurfinitfile=['''' mit.fname.etainitfile '''']; % filename for 2D specification of initial free surface position (m)
+	% }}}
+	mit.inputdata.PARM={P1,P2,P3,P4,P5};
+	% }}}
+	% input/data.pkg {{{
+	PKG=struct; % initialize PACKAGES structure
+	% PACKAGES: run-time flags for packages to use {{{
+	PKG.header='PACKAGES';
+
+	PKG.useDiagnostics='.TRUE.';
+	PKG.useOBCS='.TRUE.';
+	PKG.useShelfIce='.TRUE.';
+	PKG.useCAL='.TRUE.';
+	PKG.useEXF='.TRUE.';
+	% }}}
+	mit.inputdata.PKG={PKG};
+	% }}}
+	% Run-time package options
+	% input/data.obcs {{{
+	OBCS_P1=struct;OBCS_P2=struct;OBCS_P3=struct; % initialize OBCS_PARM structures
+	% OBCS_PARM01: Open boundaries {{{
+	OBCS_P1.header='OBCS_PARM01';
+	OBCS_P1.description='Open boundaries';
+
+	% Southern Boundary (bottom y boundary, not geographic south)
+	OB_J=1; % j index wrt Ny where the southern OBCS is set
+	OBCS_P1.OB_Jsouth=[num2str(Nx) '*' num2str(OB_J)]; % Nx-vector of J-indices (w.r.t. Ny) of Southern OB at each I-position (w.r.t. Nx)
+	OBCS_P1.OBSvFile=[]; % Nx by Nz matrix of v velocity at Southern OB
+	OBCS_P1.OBStFile=[]; % Nx by Nz matrix of pot. temp. at Southern OB
+	OBCS_P1.OBSsFile=[]; % Nx by Nz matrix of salin. at Southern OB
+
+	% Western Boundary (lefthand x boundary, not geographic west)
+	OB_I=1; % i index wrt Nx where the western OBCS is set
+	OBCS_P1.OB_Iwest=[num2str(Ny) '*' num2str(OB_I)];  % Ny-vector of I-indices (w.r.t. Nx) of Western OB at each J-position (w.r.t. Ny)
+	OBCS_P1.OBWuFile=[]; % Nx by Nz matrix of u velocity at Western OB
+	OBCS_P1.OBWtFile=[]; % Nx by Nz matrix of pot. temp. at Western OB
+	OBCS_P1.OBWsFile=[]; % Nx by Nz matrix of salin. at Western OB
+
+	OBCS_P1.useOBCSprescribe='.TRUE.'; % prescribe OB conditions
+	OBCS_P1.useOBCSbalance='.TRUE.'; % use OB balance
+	OBCS_P1.OBCS_balanceFacN=1.0; % balance factor for N OB
+	OBCS_P1.OBCS_balanceFacW=1.0; % balance factor for W OB
+
+	% Sponge layer
+	useOBCSsponge=1; % on or off
+	if useOBCSsponge==1
+		OBCS_P1.useOBCSsponge='.TRUE.';    % use sponge layers
+		OBCS_P1.useLinearSponge='.TRUE.';  % use linear sponge layer
+	end
+	% }}}
+	% OBCS_PARM02: Orlanski parameters {{{
+	OBCS_P2.header='OBCS_PARM02';
+	OBCS_P2.description='Orlanski parameters';
+	% }}}
+	% OBCS_PARM03: Sponge layer parameters {{{
+	OBCS_P3.header='OBCS_PARM03';
+	OBCS_P3.description='Sponge layer parameters';
+
+	if useOBCSsponge==1
+		OBCS_P3.spongeThickness=5; % sponge layer thickness (in grid points)
+		OBCS_P3.Vrelaxobcsbound=[]; % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
+		OBCS_P3.Urelaxobcsbound=[]; % relaxation time scale at the outermost sponge layer point of a meridional OB (s) 
+	end
+	% }}}
+	mit.inputdata.OBCS = {OBCS_P1,OBCS_P2, OBCS_P3};
+	% }}}
+	% input/data.shelfice {{{
+	SHELFICE_PARM01=struct; % initialize SHELFICE_PARM structure
+	% SHELFICE_PARM01: Parameters for SHELFICE package {{{
+	SHELFICE_P1.header='SHELFICE_PARM01';
+
+	% general options
+	SHELFICE_P1.SHELFICEwriteState='.TRUE.'; % write ice shelf state to file
+	SHELFICE_P1.SHELFICEconserve='.TRUE.'; % use conservative form of temperature boundary conditions
+	SHELFICE_P1.SHELFICEMassStepping = '.TRUE.'; % recalculate ice shelf mass at every time step
+
+	% input files
+	SHELFICE_P1.SHELFICEtopoFile=['''' mit.fname.shelficetopofile '''']; % filename for under-ice topography of ice shelves
+	SHELFICE_P1.SHELFICEmassFile=['''' mit.fname.shelficemassfile '''']; % filename for mass of ice shelves
+	SHELFICE_P1.SHELFICEMassDynTendFile=['''' mit.fname.shelficedmdtfile '''']; % filename for mass tendency of ice shelves
+
+	% boundary layer options
+	SHELFICE_P1.SHELFICEboundaryLayer='.TRUE.'; % use simple boundary layer mixing parameterization
+	SHELFICE_P1.SHI_withBL_realFWflux='.TRUE.'; % use real-FW flux from boundary layer
+	%SHIELFICE_P1.SHI_withBL_uStarTopDz='.TRUE.'; % compute uStar from uVel, vVel averaged over top Dz thickness
+
+	% thermodynamic exchange options
+	SHELFICE_P1.SHELFICEuseGammaFrict='.TRUE.'; % use velocity dependent exchange coefficients (Holland and Jenkins 1999) 
+	SHELFICE_P1.SHELFICEheatTransCoeff=0.0135; % transfer coefficient for temperature (m/s)
+	SHELFICE_P1.SHELFICEsaltTransCoeff=0.000265; % transfer coefficient for salinity (m/s)
+
+	% material properties
+	SHELFICE_P1.rho_ice=917.;     % (constant) mean density of ice shelf (kg/m3)
+
+	% drag options
+	SHELFICE_P1.SHELFICEDragQuadratic=.006; % quadratic drag coefficient at bottom ice shelf (non-dim.)
+	SHELFICE_P1.shiCdrag=SHELFICE_P1.SHELFICEDragQuadratic; % set to be the same
+
+	% ice draft free-surface remeshing options
+	SHELFICE_P1.SHELFICERemeshFrequency=3600.0; % how often to remesh the surface cells (s)
+	SHELFICE_P1.SHELFICESplitThreshold=1.3; % maximum fractional height of ice shelf cavity surface cell
+	SHELFICE_P1.SHELFICEMergeThreshold=.29; % minimum fractional height of ice shelf cavity surface cell 
+
+	% subglacial discharge options
+	addrunoff=0;
+	if addrunoff==1
+		SHELFICE_P1.SHELFICEaddrunoff='.TRUE.'; % use runoff
+		SHELFICE_P1.SHELFICESubglFluxFile=['''' mit.fname.shelficesubglfluxfile '''']; % filename for subglacial runoff specification
+	end
+
+	% Dan's options, i think related to the modified melt rate at depth
+	%SHELFICE_P1.SHELFICE_massmin_trueDens='.TRUE.';
+	%SHELFICE_P1.SHELFICE_conserve_ssh='.TRUE.';
+	%SHELFICE_P1.SHELFICEdepthMinMelt=10.;
+	%SHELFICE_P1.SHELFICE_transition_gamma='.FALSE.'
+	%SHELFICE_P1.SHELFICETransGammaThickness=0.
+	% }}}
+	mit.inputdata.SHELFICE = {SHELFICE_P1};
+	% }}}
+	% input/data.cal {{{
+	CAL=struct; % intialize CAL structure
+	% CAL_NML: The calendar package namelist {{{
+	CAL.header='CAL_NML';
+
+	CAL.TheCalendar='model'; % choose 'model' calendar
+	CAL.startdate_1=[]; % yyyymmdd of start date
+	%CAL.startDate_2=[]; % hhMMss of start date
+	% Benjy: I am not sure exactly what calendarDumps does.
+	CAL.calendarDumps='.FALSE.'; % align the output with calendar months?
+	% }}}
+	mit.inputdata.CAL = {CAL};
+	% }}}
+	% input/data.exf {{{
+	switch experiment.name
+		case 'CLIM'   % monthly climatology 2001-2012 from Paris 2
+		case 'RCP85'  % ensemble average forcings from ISMIP-6
+		case 'PARIS2' % ensemble average forcings from Paris 2
+	end
+	EXF1=struct; EXF2=struct; EXF3=struct; EXF4=struct; EXF_OBCS=struct; % intialize EXF structures
+	% EXF_NML_01: External Forcings namelist 1 {{{
+	EXF1.header='EXF_NML_01';
+	% }}}
+	% EXF_NML_02: External Forcings namelist 2 {{{
+	EXF2.header='EXF_NML_02';
+	% }}}
+	% EXF_NML_03: External Forcings namelist 3 {{{
+	EXF3.header='EXF_NML_03';
+	% }}}
+	% EXF_NML_04: External Forcings namelist 4 {{{
+	EXF4.header='EXF_NML_04';
+	% }}}
+	% EXF_OBCS: External Forcings OBCS options {{{
+	EXF_OBCS.header='EXF_NML_EXF_OBCS';
+	EXF_OBCS.useOBCSYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
+	obcsWstartdate1 = []; % W boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
+	obcsWperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	obcsSstartdate1 = []; % S boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
+	obcsSperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	% }}}
+	mit.inputdata.EXF = {EXF1,EXF2,EXF3,EXF4,EXF_OBCS};
+	% }}}
+	% input/data.diagnostics {{{
+	DIAG_LIST=struct; DIAG_STATIS=struct; % intialize DIAG structures
+	% DIAGNOSTICS_LIST: Diagnostic Package Choices {{{
+	DIAG_LIST.header='DIAGNOSTICS_LIST';
+	DIAG_LIST.description={'Diagnostic Package Choices', ...
+		'--------------------', ...
+		'  dumpAtLast (logical): always write output at the end of simulation (default=F)', ...
+		'  diag_mnc   (logical): write to NetCDF files (default=useMNC)', ...
+		'--for each output-stream:', ...
+		'  fileName(n) : prefix of the output file name (max 80c long) for outp.stream n', ...
+		'  frequency(n):< 0 : write snap-shot output every |frequency| seconds', ...
+		'               > 0 : write time-average output every frequency seconds', ...
+		'  timePhase(n)     : write at time = timePhase + multiple of |frequency|', ...
+		'    averagingFreq  : frequency (in s) for periodic averaging interval', ...
+		'    averagingPhase : phase     (in s) for periodic averaging interval', ...
+		'    repeatCycle    : number of averaging intervals in 1 cycle', ...
+		'  levels(:,n) : list of levels to write to file (Notes: declared as REAL)', ...
+		'                when this entry is missing, select all common levels of this list', ...
+		'  fields(:,n) : list of selected diagnostics fields (8.c) in outp.stream n', ...
+		'                (see "available_diagnostics.log" file for the full list of diags)', ...
+		'  missing_value(n) : missing value for real-type fields in output file "n"', ...
+		'  fileFlags(n)     : specific code (8c string) for output file "n"', ...
+		'--------------------'};
+	% THESE ALL GET SET IN THE TIMESTEPPING STEP
+	% }}}
+	% DIAG_STATIS_PARMS: Diagnostic Per Level Statistics {{{
+	DIAG_STATIS.header='DIAG_STATIS_PARMS';
+	DIAG_STATIS.description={'Parameter for Diagnostics of per level statistics:', ...
+		'--------------------', ...
+		'  diagSt_mnc (logical): write stat-diags to NetCDF files (default=diag_mnc)', ...
+		'  diagSt_regMaskFile : file containing the region-mask to read-in', ...
+		'  nSetRegMskFile   : number of region-mask sets within the region-mask file', ...
+		'  set_regMask(i)   : region-mask set-index that identifies the region "i"', ...
+		'  val_regMask(i)   : region "i" identifier value in the region mask', ...
+		'--for each output-stream:', ...
+		'  stat_fName(n) : prefix of the output file name (max 80c long) for outp.stream n', ...
+		'  stat_freq(n):< 0 : write snap-shot output every |stat_freq| seconds', ...
+		'               > 0 : write time-average output every stat_freq seconds', ...
+		'  stat_phase(n)    : write at time = stat_phase + multiple of |stat_freq|', ...
+		'  stat_region(:,n) : list of "regions" (default: 1 region only=global)', ...
+		'  stat_fields(:,n) : list of selected diagnostics fields (8.c) in outp.stream n', ...
+		'                (see "available_diagnostics.log" file for the full list of diags)', ...
+		'--------------------'};
+	% }}}
+	mit.inputdata.DIAG = {DIAG_LIST,DIAG_STATIS};
+	% }}}
 	savedata(org,mit); % save the model
 end % }}}
-if perform(org,'Param'), % {{{
-	mit=load(org,'Mesh');
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% climate forcing filenames
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% There are two experiments from Naughten et al., 2023 (Paris2C and RCP85), each with 10 members.
-	% There are two types of files: 
-	%    bdry files which give the ocean state interpolated in x and y at the bottom and left
-	%       boundaries, for each month between 2010--2100
-	%    init files which give the ocean state interpolated in x and y across the entire domain for 
-	%       the initial state of Jan 2010.
-	%  Files have been interpolated from the original output data by Dan Goldberg.
-	mit.forcing = struct();
-	mit.forcing.Ndir = fullfile(proph_dir,'climateforcings/naughten2023_data'); % directory path for unprocessed Naughten data
-	mit.forcing.bdry_prefix = 'bdryDatapaholPy'; % prefix for boundary forcing files
-	mit.forcing.init_prefix = 'initpaholPy'; % prefix for initial state files
-	mit.forcing.exp = {'Paris2C', 'RCP85'}; % string for climate experiment 
-	mit.forcing.member = sprintfc('%03.0f',[1:10]); % string for member
-	mit.forcing.suffix = 'benjy.mat'; % suffix for all files
-	mit.forcing.bdry_example = [mit.forcing.bdry_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the bdry files
-	mit.forcing.init_example = [mit.forcing.init_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the init files
-	field_prefix = {'T','S','U','V'}; % data fields
-	mit.forcing.field_bdry = [strcat(field_prefix,'leftbdry') strcat(field_prefix,'botbdry')]; % field names for bdry files
-	mit.forcing.field_init = strcat(field_prefix(1:2),'init'); % field names for init files
-	mit.forcing.Ddir = fullfile(proph_dir,'climateforcings/data'); % directory path for processed boundary forcing data
-	field_prefix_out = {'theta','salt','uvel','vvel'}; % data fields
-	mit.forcing.field_bdry_out = [strcat(field_prefix_out,'.obw'),strcat(field_prefix_out,'.obs')]; % field names for processed forcing files
-
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% MITgcm filenames
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	mit.fname = struct();
-
+if perform(org,'Bathymetry'), % {{{
+	mit=load(org,'MeshInit');
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Bathymetry
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -636,6 +595,7 @@ if perform(org,'Param'), % {{{
 	% boundary.
 
 	% Naughten 2023 Bathymetry
+	disp('Processing Naughten 2023 Bathymetry');
 	fname = fullfile(mit.forcing.Ndir,mit.forcing.init_example); % one of the init files
 	fieldname = mit.forcing.field_init{1}; % one of the init state variable fields (Tinit)
 	A = getfield(load(fname,fieldname),fieldname); % load state variable
@@ -666,6 +626,7 @@ if perform(org,'Param'), % {{{
 	wallmaskB_prime = reshape(isinterior(polyB_prime,mit.mesh.hXC(:),mit.mesh.hYC(:)),size(B_prime)); % the wall mask for Naughten
 
 	% Bedmachine Bathymetry
+	disp('Processing Bedmachine Bathymetry');
 	B = interpBedmachineAntarctica(mit.mesh.hXC,mit.mesh.hYC,'bed','nearest'); % B is the bed from Bedmachine Antarctica
 
 	% The bathymetry interpolation scheme
@@ -676,6 +637,7 @@ if perform(org,'Param'), % {{{
 	B_dagger = min(a1.*B + (1-a1).*B_prime, 0); % Adjusted bathymetry, capped at sea level (m)
 
 	% Our Bear Ridge wall
+	disp('Processing Bear Ridge Wall');
 	% find the Bedmachine contour around Bear Ridge
 	[cc] = contourc(mit.mesh.xc,mit.mesh.yc,B,[-300 -300]); % 300m depth contours for Bedmachine
 	i=1; % index of this contour
@@ -727,82 +689,43 @@ if perform(org,'Param'), % {{{
 
 	% enforce wall in bathymetry
 	wallmask = reshape(isinterior(polywall,mit.mesh.hXC(:),mit.mesh.hYC(:)),size(B_prime)); % the Bear Ridge wall mask
-	B_dagger(wallmask)=0; 
+	B_dagger(wallmask)=0;
 
-	% Check if our B_dagger bathymetry accurately masks the correct cells
-	mask = (mit.mesh.ZC_N)<B_dagger; % nanmask from B_dagger
-	mask_N = isnan(A); % Naughten nanmask
-	mismatch = (mask ~= isnan(A)); % the difference
-	mask_zc = (mit.mesh.ZC)<B_dagger; % the mask on our z grid
+	% find the partial topography cells and make a mask of the open gridcells
+	disp('Processing Partial Topography Cells');
+	dbathy = reshape(mit.mesh.zp,1,1,length(mit.mesh.zp)) - B_dagger; % distance between cell edge and bathymetry (m)
+	ddbathy = abs(diff(dbathy>0,[],3)); % find where dbathy flips from negative to positive (boolean)
+	[~,linear_ind]=max(ddbathy,[],3); % find which cell the bathymetry falls in (linear index)
+	[k_ind] = ind2sub(size(ddbathy),linear_ind); % find upper boundary of cell bathymetry falls in (or on) (z-dim index)
+	hFacDim = mit.mesh.zp(k_ind)-B_dagger; % the dimensional thickness of the final cell (m)
+	hFacMin = 0.20; % the non-dimensional minimum fractional thickness of a gridcell
+	hFacC = hFacDim./mit.mesh.delzF(k_ind); % the non-dimensional fractional thickness of the final cell
+	ind = hFacC<hFacMin; % find small hFac
+	roundValues = [0, hFacMin]; % the hFac values that we will round to 
+	hFacC(ind) = interp1(roundValues,roundValues,hFacC(ind),'nearest'); % round small hFac to the nearest of 0 or hFacMin
+	hFacDim = hFacC.*mit.mesh.delzF(k_ind); % the dimensional thickness of the final cell (m)
+	opencell_mask = (reshape(mit.mesh.zp,1,1,length(mit.mesh.zp)) -  mit.mesh.zp(k_ind) + hFacDim) > 0; % mask of open cells in MITgcm
 
 	% Save Bathymetry data
 	mit.geometry=struct();
-	mit.geometry.bathy=B_dagger; % the bathymetry (m)
-	mit.geometry.polywall=polywall; % the polyshape defining the bear ridge wall
-	mit.forcing.obs_mask=squeeze(mask_zc(1,:,:))';
-	mit.forcing.obw_mask=squeeze(mask_zc(:,1,:))';
-	mit.forcing.obs_mask_N=squeeze(mask_N(1,:,:))';
-	mit.forcing.obw_mask_N=squeeze(mask_N(:,1,:))';
+	mit.geometry.bathy   = B_dagger; % the bathymetry (m)
+	mit.geometry.polywall= polywall; % the polyshape defining the bear ridge wall
+	mit.geometry.hFacMin = hFacMin; % the non-dimensional minimum fractional thickness of a gridcell
+	mit.geometry.hFacDim = hFacDim; % the dimensional thickness of the final cell (m)
+	mit.geometry.hFacC   = hFacC;   % the non-dimensional fractional thickness of the final cell
+	mit.geometry.k_ind   = k_ind;   % index of the upper cell edge above hFac (z-dim index)
+	mit.geometry.open_mask    = opencell_mask(:,:,1:end-1); % mask of open cells in MITgcm
+	mit.forcing.obs_mask_N = isnan(squeeze(A(1,:,:)))'; % Naughten nanmask for bottom boundary
+	mit.forcing.obw_mask_N = isnan(squeeze(A(:,1,:)))'; % Naughten nanmask for left boundary
 
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% Plot
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	figure(1);clf;
-	subplot(2,1,1);hold on;
-	j = 1;
-	h=pcolor(squeeze(mit.mesh.XC_N(j,:,:)),squeeze(mit.mesh.ZC_N(j,:,:)),squeeze(1*(mask_N(j,:,:))));
-	set(h,'edgecolor','flat');
-	plot(mit.mesh.xc,B_dagger(j,:),'r')
-	axis tight; ylabel('z');xlabel('x');
-	title('isnan mask of Naughten');
-	subtitle('our bed follows beneath floating ice');
-	subplot(2,1,2);hold on;
-	h=pcolor(squeeze(mit.mesh.XC_N(j,:,:)),squeeze(mit.mesh.ZC_N(j,:,:)),squeeze(1*(mismatch(j,:,:))));
-	set(h,'edgecolor','flat');
-	plot(mit.mesh.xc,B_dagger(j,:),'r')
-	axis tight; ylabel('z');xlabel('x');
-	title('nanmask of Naughten != our nanmask');
-	subtitle('our nanmask does not include floating ice');
-
-	figure(2);clf;
-	subplot(2,1,1);hold on;
-	i = 1;
-	h=pcolor(squeeze(mit.mesh.YC_N(:,i,:)),squeeze(mit.mesh.ZC_N(:,i,:)),squeeze(1*(mask_N(:,i,:))));
-	set(h,'edgecolor','flat');
-	plot(mit.mesh.yc,B_dagger(:,i),'r')
-	axis tight; ylabel('z');xlabel('x');
-	title('isnan mask of Naughten');
-	subtitle('our bed follows beneath floating ice');
-	subplot(2,1,2);hold on;
-	h=pcolor(squeeze(mit.mesh.YC_N(:,i,:)),squeeze(mit.mesh.ZC_N(:,i,:)),squeeze(1*(mismatch(:,i,:))));
-	set(h,'edgecolor','flat');
-	plot(mit.mesh.yc,B_dagger(:,i),'r')
-	axis tight; ylabel('z');xlabel('x');
-	title('nanmask of Naughten != our nanmask');
-	subtitle('our nanmask does not include floating ice');
-	caxis([0,1]);
-
-	% Plot Bear Ridge Wall
-	figure(3);clf;
-	hold on;
-	imagesc(mit.mesh.xc,mit.mesh.yc,B)
-	set(gca,'ydir','normal');axis equal tight;
-	xlim(mit.mesh.xc([1,end]));
-	caxis([min(B,[],[1,2]),0]);
-	h0N=plot(polyB_prime,'facecolor','none','edgecolor','r','linewidth',2);
-	hwall=plot(polywall,'facecolor','none','edgecolor','k','linewidth',2);
-	h300=plot(polyB,'facecolor','none','edgecolor','w','linestyle','--');
-	legend([h0N,hwall,h300],'Naughten''s wall','My wall','300m depth contour')
-	cb=colorbar;
-	cb.Label.String = 'depth (m)';
-	title('Bear Ridge wall')
-	ylabel('y (m)');xlabel('x (m)');
+	% Write to file
+	write_binfile(mit.fname.bathyfile,permute(mit.geometry.bathy,[2,1])); % write to binary input file with size Nx Ny
 
 	% Save mit structure
 	savedata(org,mit);
 end % }}}
 if perform(org,'BoundaryForcings'), % {{{
-	mit=load(org,'Param');
+	mit=load(org,'Bathymetry');
 
 	D={}; % Initialize cell array for climate forcing data structures
 	for i = 1:length(mit.forcing.exp)
@@ -824,16 +747,44 @@ if perform(org,'BoundaryForcings'), % {{{
 			B = nanmean(A,4);
 
 			% enforce nanmask on boundary condition (avoid interpolation error in velocity)
-			if strcmp( mit.forcing.field_bdry_out{k}(end-2:end),'obw')
-				B(mit.forcing.obw_mask_N)=NaN;
-				% the domain extent is actually further into the grounded ice: pad this with nan to reach the correct size
-				B(:,end+1:length(mit.mesh.yc),:)=NaN; % pad the domain with nan 
-			else
-				B(mit.forcing.obs_mask_N)=NaN;
+			switch mit.forcing.field_bdry_out{k}(end-2:end)
+				case 'obw' % left boundary
+					% the domain extent is actually further into the grounded ice: pad this with nan to reach the correct size
+					B(:,end+1:length(mit.mesh.yc),:)=NaN; % pad the domain with nan 
+					% mask nan values for every page of the matrix
+					for m = 1:size(B,3)
+						ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
+						B(find(mit.forcing.obw_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
+					end
+					% partial cell indexing
+					k_ind = mit.geometry.k_ind(:,1); % vertical index where we need to correct for partial cell
+					zc_hFac = mit.mesh.zp(mit.geometry.k_ind(:,1)) - mit.geometry.hFacDim(:,1)./2; % center for partial cell (m)
+					open_ind = mit.geometry.hFacDim(:,1)>0;
+				case 'obs'
+					% mask nan values for every page of the matrix
+					for m = 1:size(B,3)
+						ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
+						B(find(mit.forcing.obs_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
+					end
+					% partial cell indexing
+					k_ind = mit.geometry.k_ind(1,:); % vertical index where we need to correct for partial cell
+					zc_hFac = mit.mesh.zp(mit.geometry.k_ind(1,:)) - mit.geometry.hFacDim(1,:)./2; % center for partial cell (m)
+					open_ind = mit.geometry.hFacDim(1,:)>0;
+				otherwise 
+					error('parsing failure on boundary identifier');
 			end
 
 			% interpolate from Naughten z grid onto the refined z grid
-			Bq = interp1(mit.mesh.zc_N,B,mit.mesh.zc,'nearest');
+			Bq = interp1(mit.mesh.zc_N,B,mit.mesh.zc,'nearest'); % assign nearest real value to all cell centers
+
+			% assign the correct value for the partial topography cells at the bed
+			for m = 1:size(B,3)
+				for ii = 1:size(B,2)
+					if isnan(Bq(k_ind(ii),ii,m)) & open_ind(ii)
+						Bq(k_ind(ii),ii,m) =  Bq(k_ind(ii)-1,ii,m); % replace NaN values with the cell value above 
+					end
+				end
+			end
 
 			% plot the vertical grid and bathymetry
 			if k==1 & i==1
@@ -864,7 +815,7 @@ if perform(org,'BoundaryForcings'), % {{{
 			end
 
 			% divide B into one file per year and write to binary file for MITgcm
-			years = D{j}.ystart:D{j}.yend;
+			years = double(D{j}.ystart:D{j}.yend);
 			for n = 1:length(years)
 				% the filename to write to (this will be read by OBCS)
 				fname_out = [mit.forcing.field_bdry_out{k} '.' mit.forcing.exp{i} '_' num2str(years(n))];
@@ -880,29 +831,33 @@ if perform(org,'BoundaryForcings'), % {{{
 			end
 		end
 	end
+	% save mit
+	mit.forcing.startdate = datetime(years(1),1,1);
+	savedata(org,mit);
 end % }}}
 if perform(org,'InitialConditions'), % {{{
-	mit=load(org,'Param');
+	mit=load(org,'BoundaryForcings');
 	mit.initialization=struct();
-	
-	D={}; % Initialize cell array for climate forcing data structures
+
+	Dinit = []; % inital data for T and S 
 	for i = 1:length(mit.forcing.exp)
 		% Load all members of the experiment
+		D={}; % Initialize cell array for climate forcing data structures
 		for j = 1:length(mit.forcing.member)
 			fname = [mit.forcing.init_prefix mit.forcing.exp{i} mit.forcing.member{j} mit.forcing.suffix]; % file to be loaded
 			fprintf('Loading '); ls(fullfile(mit.forcing.Ndir,fname)); % print out the file being read
 			D{j} = load(fullfile(mit.forcing.Ndir,fname)); % load data into array of structures
 		end
 		% Loop through all fields
-      for k=1:length(mit.forcing.field_init)
-			 disp(['Processing ' mit.forcing.field_init{k}]);
-         % collect field from all members
-         A = []; % matrix to collect field. dim1 is z, dim2 is x or y, dim3 is time (month), dim4 is member (1-10)
-         for j = 1:length(D)
+		for k=1:length(mit.forcing.field_init)
+			disp(['Processing ' mit.forcing.field_init{k}]);
+			% collect field from all members
+			A = []; % matrix to collect field. dim1 is x, dim2 is y, dim3 is z, dim4 is member (1-10)
+			for j = 1:length(D)
 				A(:,:,:,j) = getfield(D{j},mit.forcing.field_init{k});
-         end
+			end
 			% take mean of field across members and horizontal dimensions
-         B = squeeze(nanmean(A,[1,2,4]));
+			B = squeeze(nanmean(A,[1,2,4]));
 			%sigma = squeeze(nanstd(A,[],[1,2,4]));
 
 			x = mit.mesh.zc_N(~isnan(B));
@@ -910,26 +865,163 @@ if perform(org,'InitialConditions'), % {{{
 			%sigma = sigma(~isnan(B));
 			xq = mit.mesh.zc;
 			bq = interp1(x,b,xq,'linear','extrap');
-			
+
 			% save the average state 
-			fieldname = [mit.forcing.field_init{k}(1),'_',mit.forcing.exp{i}];
-			mit.initialization.(fieldname) = bq;
+			%fieldname = [mit.forcing.field_init{k}(1),'_',mit.forcing.exp{i}];
+			%mit.initialization.(fieldname) = bq;
+			Dinit(k,:,i) = bq;
 		end
 	end
+
+	% average to get on Tinit and Sinit
+	mit.initialization.Tinit = mean(Dinit(1,:,:),[3]);
+	mit.initialization.Sinit = mean(Dinit(2,:,:),[3]);
+
+	% write to file
+	fname = ['input/' mit.fname.thetainitfile]; 
+	disp(['writing mit.initialization.Tinit to ' fname]);
+	write_binfile(fname,mit.initialization.Tinit);
+	fname = ['input/' mit.fname.saltinitfile]; 
+	disp(['writing mit.initialization.Sinit to ' fname]);
+	write_binfile(fname,mit.initialization.Sinit);
+
 	figure(1);clf;
 	ax1=subplot(1,2,1); hold on;
-	plot(mit.mesh.zc,mit.initialization.T_Paris2C,'linewidth',2);
-	plot(mit.mesh.zc,mit.initialization.T_RCP85,'linewidth',2);
+	plot(mit.mesh.zc,Dinit(1,:,1),'linewidth',2);
+	plot(mit.mesh.zc,Dinit(1,:,2),'linewidth',2);
+	plot(mit.mesh.zc,mit.initialization.Tinit,'--','linewidth',2);
 	xlabel('z (m)');,ylabel('T (deg C)');
 	ax2=subplot(1,2,2); hold on;
-	plot(mit.mesh.zc,mit.initialization.S_Paris2C,'linewidth',2);
-	plot(mit.mesh.zc,mit.initialization.S_RCP85,'linewidth',2);
+	plot(mit.mesh.zc,Dinit(2,:,1),'linewidth',2);
+	plot(mit.mesh.zc,Dinit(2,:,2),'linewidth',2);
+	plot(mit.mesh.zc,mit.initialization.Sinit,'--','linewidth',2);
 	xlabel('z (m)');,ylabel('S (ppt)');
-	legend('Paris2C','RCP85','location','sw');
+	legend('Paris2C','RCP85','mean of all','location','sw');
 
 	savedata(org,mit);
 end % }}}
-if perform(org,'CompileMITgcm'), % compile MITgcm{{{
+if perform(org,'InitialEta'), % {{{
+	mit=load(org,'InitialConditions');
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
+	% Define initial ice shelf mass
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
+	disp('reading ice shelf thickness from ISSM');
+	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_InversionC.mat');
+	md = loadmodel(fname);
+	% interpolate initial ice thickness from ISSM (m)
+	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
+	Hice = reshape(Hice,[numel(mit.mesh.yc) numel(mit.mesh.xc)]); % reshape from vector to matrix (m)
+	Hice(Hice<2) = 0; % assign zero ice to appropriate areas of the domain
+	shelficemass=Hice*mit.inputdata.SHELFICE{1}.rho_ice; % ice mass per m^2 at cell centers (kg/m^2)
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % Define pressure of ocean column
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('solving for ocean column pressures');
+	% define material properties, constants, and equation of state 
+	pa2db=1E-4;       % pascal to decibar
+	g = mit.inputdata.PARM{1}.gravity; % m/s^2
+	rhoNil = mit.inputdata.PARM{1}.rhoNil; % ref density for equation of state (kg/m^3)
+	p=mit.mesh.zc*g*rhoNil*pa2db; % initial guess for pressure in decibar (1 db = 1E-4 kg/(s^2 m))
+	pcnvg=rms(p); % initialize convergence criterion
+	ptol=1e-13; % convergence tolerance for defining the pressure
+	%i=0; % benjy's loop counter, just for debugging
+	while pcnvg>ptol
+		p0=p;                                                  % save last pressure estimate (db)
+		rho=densjmd95(mit.initialization.Sinit,mit.initialization.Tinit,p); % get new estimate of density using equation of state (kg/m^3)
+		drho=rho-rhoNil;                                       % density anomaly (kg/m^3)
+		phiC=cumsum(mit.mesh.delzC(1:end-1).*g.*drho./rhoNil); % cumulative gravitational potential anomaly at the cell centers (m^2/s^2)
+		phiF=[0 cumsum(mit.mesh.delzF.*g.*drho./rhoNil)];      % cumulative gravitational potential anomaly at ALL cell edges (m^2/s^2)
+		p=rhoNil*(mit.mesh.zc*g+phiC)*pa2db;                   % new pressure estimate (db)
+		pcnvg=rms(p-p0);                                       % update convergence criterion
+		%i=i+1; disp(num2str(i)); % loop counter for debugging
+	end
+	massC=rhoNil*(phiC/g+ abs(mit.mesh.zc)); % vertically integrated mass density at cell centers (kg/m^2)
+	massF=rhoNil*(phiF/g+ abs(mit.mesh.zp)); % vertically integrated mass density at ALL cell edges (kg/m^2)
+	
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % Calculate ice shelf draft and grounded ice, define free surface
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('calculating ice shelf draft, topo, and eta');
+	% calculate depth of the ice draft and free surface
+	Nx = numel(mit.mesh.xc);
+	Ny = numel(mit.mesh.yc);
+	topo = zeros(Ny,Nx);    % initialize matrix for ice draft depth (m)
+	etainit = zeros(Ny,Nx); % initialize matrix for free surface
+	mergethreshold = mit.inputdata.SHELFICE{1}.SHELFICEMergeThreshold; % dimensionless merge threshold from Jordan, 2017
+	% loop through horizontal cells
+	for ix=1:Nx
+		for iy=1:Ny
+			mass=shelficemass(iy,ix);     % mass density of current cell (kg/m^2)
+			k = max(find(massF < mass));  % z cell where ice-ocean interface is (lowest cell where ice can displace water at upper cell edge)
+			if ~isempty(k) % there is at least SOME ice
+				if k<=numel(mit.mesh.zc) % ice may not be grounded
+					if (mass < massC(k)) % ice CANNOT displace the water at the center of the kth cell
+						topo(iy,ix)= mit.mesh.zp(k) ...
+							- (mass-massF(k)) * (mit.mesh.delzF(k)/2)/(massC(k)-massF(k)); % place the interface between the upper edge and the center
+					else                 % ice CAN displace the water at the center of the kth cell
+						topo(iy,ix)= mit.mesh.zc(k) ...
+							- (mass-massC(k)) * (mit.mesh.delzF(k)/2)/(massF(k+1)-massC(k)); % place the interface between the center and the next edge
+					end
+					colH = topo(iy,ix) - (mit.mesh.zp(mit.geometry.k_ind(iy,ix)) - mit.geometry.hFacDim(iy,ix)); % height of water column under ice
+					if colH/mit.mesh.delzF(k) < mit.geometry.hFacMin % closed ocean column, ice is grounded
+						% put Ro_surf at the last grid face above the bed, close with negative eta
+						topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix)); 
+						etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
+					else
+						% round topo to the cell edge, set eta_init to make difference
+						dr = 1 - (mit.mesh.zp(k)-topo(iy,ix))/mit.mesh.delzF(k); % fraction of kth cell that is open
+						if (dr > mergethreshold) | (k==mit.geometry.k_ind(iy,ix)) % cell is above mergethreshold or there is no open cell below it
+							% bring Ro_surf *up* to closest grid face & make etainit negative to compensate
+							topo(iy,ix) = mit.mesh.zp(k);      % m
+							etainit(iy,ix) = (dr-1)*mit.mesh.delzF(k);   % m
+						else % merge with cell below it
+							% bring Ro_surf *down* to closest grid face & make etainit pos to compensate
+							topo(iy,ix) = mit.mesh.zp(k+1); % m
+							etainit(iy,ix) = (dr)*mit.mesh.delzF(k);     % m
+						end
+					end
+				else % ice is definitely grounded
+					% put Ro_surf at the last grid face above the bed, close with negative eta
+					topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix));
+					etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
+				end
+			end
+		end
+	end
+	
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
+	% write to files
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' mit.fname.etainitfile])
+	fname = ['input/' mit.fname.shelficemassfile];
+	write_binfile(fname,permute(shelficemass,[2,1]));
+	fname = ['input/' mit.fname.shelficetopofile];
+	write_binfile(fname,permute(topo,[2,1]));
+	fname = ['input/' mit.fname.etainitfile];
+	write_binfile(fname,permute(etainit,[2,1]));
+
+	mit.shelfice.shelficemass = shelficemass;
+	mit.shelfice.topo = topo;
+	mit.shelfice.etainit = etainit;
+
+	% plot
+	figure(1);clf;hold on;
+	draft = topo + etainit;
+	bathy = (mit.mesh.zp(mit.geometry.k_ind) - mit.geometry.hFacDim);
+	Hcol = (draft - bathy);
+	imagesc(Hcol)
+	set(gca,'ydir','normal');axis equal tight;
+	colorbar;
+	contour((draft==bathy),[0.5,0.5],'w');
+	contour(shelficemass,[1E-10,1E-10],'r')
+	legend('grounding line','ice front')
+	title('water column height (m)')
+
+	savedata(org,mit);
+end % }}}
+if perform(org,'CompileMITgcm'), % {{{
 	% Compile-time options {{{
 	% code/SIZE.h {{{
 	SZ=struct; % initialize SIZE.h structure
@@ -988,125 +1080,109 @@ if perform(org,'CompileMITgcm'), % compile MITgcm{{{
 	cd(proph_dir);
 	% }}}
 end % }}}
-if perform(org,'RunPrepMITgcm'), % prepare MITgcm for run {{{
-	% input/data binary files {{{
-	% define bathymetry {{{ 
-	bathymetry = interpBedmachineAntarctica(XC,YC,'bed','linear'); % interpolate bed elevation data from BedMachine (m)
-	walls=(XC<x0_OC | XC>(LxOC+x0_OC) | YC<y0_OC | YC>(LyOC+y0_OC)); % index of wall locations
-	bathymetry(walls) = 0; % set wall bathymetry (m)
-	write_binfile(bathyfile,permute(bathymetry,[2,1])); % write to binary input file with size Nx Ny
-	% }}}
-	% define initial T, S conditions {{{
-	% thetainitfile
-	[nc_data, nc_x, nc_y, nc_z] = load_ncdata(thetaforcingfile,'temperature'); % read data from nc file
-	zq=-zc'; % the z query points (m)
-	zq(zq>max(nc_z)) = max(nc_z); % nearest neighbor extrapolation for the upper layers
-	thetainit = interp3(nc_x,nc_y,nc_z',nc_data,xc,yc,zq); % interpolate theta onto cell centers (deg C)
-	write_binfile(thetainitfile,permute(thetainit,[2,1,3])); % write to binary input file with size Nx, Ny, Nz 
-	% saltinitfile
-	[nc_data, nc_x, nc_y, nc_z] = load_ncdata(saltforcingfile,'salinity'); % read data from nc file
-	zq=-zc; % the z query points (m)
-	zq(zq>max(nc_z)) = max(nc_z); % nearest neighbor extrapolation for the upper layers
-	saltinit = interp3(nc_x,nc_y,nc_z',nc_data,xc,yc,zq'); % interpolate theta onto cell centers (deg C)
-	write_binfile(saltinitfile,permute(saltinit,[2,1,3])); % write to binary input file
-	% some checks {{{
-	if any(isnan(thetainit(:)))
-		error('nan value detected in thetainit, potential problem with interpolation');
-	end
-	if any(isnan(saltinit(:)))
-		error('nan value detected in saltinit, potential problem with interpolation');
-	end
-	% }}}
-	% }}}
-	% etainitfile
-	% }}}
-	% input/data.OBCS binary files {{{
 
-	% Coordinates on the Western (left side) boundary: these are all size (Nz,Ny)
-	% U points (on the Arakawa C grid) are on xg, yc
-	% V points (on the Arakawa C grid) are on xc, yg
-	% Center points are on xc, yc
-	OBW_xc = repmat(xc(OB_I),    Nz, Ny); % x cell center for OBW
-	OBW_xg = repmat(xp(OB_I),    Nz, Ny); % x cell edge for OBW
-	OBW_yc = repmat(yc,          Nz, 1 ); % y cell center for OBW
-	OBW_yg = repmat(yp(1:end-1), Nz, 1 ); % y cell edge for OBW
-	OBW_zc = repmat(-zc',         1,  Ny); % z cell center for OBW
+% These steps diverge between experiments
+if perform(org,'RuntimeOptions') % {{{
+	mit=load(org,'InitialEta');
 
-	% Coordinates on the Southern (bottom side) boundary: these are all size (Nz,Nx)
-	% U points (on the Arakawa C grid) are on xg, yc
-	% V points (on the Arakawa C grid) are on xc, yg
-	% Center points are on xc, yc
-	OBS_xc = repmat(xc,          Nz, 1 ); % x cell center for OBS
-	OBS_xg = repmat(xp(1:end-1), Nz, 1 ); % x cell edge for OBS
-	OBS_yc = repmat(yc(OB_J),    Nz, Nx); % y cell center for OBS
-	OBS_yg = repmat(yp(OB_J),    Nz, Nx); % y cell edge for OBS
-	OBC_zc = repmat(-zc',         1,  Nx); % z cell center for OBS
+	% EXPERIMENT
+	disp(['Setting experimtent boundary forcings for ' experiment.forcing]);
+	% Bottom boundary
+	mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  experiment.forcing '''']; % Nx by Nz matrix of v velocity at Southern OB
+   mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile experiment.forcing '''']; % Nx by Nz matrix of pot. temp. at Southern OB
+   mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  experiment.forcing '''']; % Nx by Nz matrix of salin. at Southern OB
+	% Left boundary
+	mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  experiment.forcing '''']; % Nx by Nz matrix of u velocity at Western OB
+   mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile experiment.forcing '''']; % Nx by Nz matrix of pot. temp. at Western OB
+   mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  experiment.forcing '''']; % Nx by Nz matrix of salin. at Western OB
 
-	warning('Using placeholder zero values for OBCS vel data');
-	uvelOBW = zeros(Nz,Ny); % x component of left boundary velocity
-	vvelOBW = zeros(Nz,Ny); % y component of left boundary velocity
+	% TIME STEPPING
+	disp('Setting timestepping options');
+	% coupling time step parameters
+	mit.coupling=struct();
+	mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
+	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
+	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
+	mit.coupling.nsteps = 1; % number of coupled time steps to take
 
-	uvelOBS = zeros(Nz,Nx); % % x component of bottom boundary velocity
-	vvelOBS = zeros(Nz,Nx); % % y component of bottom boundary velocity
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% input/data Time stepping parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Run Start and Duration
+   mit.inputdata.PARM{3}.nIter0=0;        % starting timestep iteration number
+   mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
+   mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
+   % Restart/Pickup Files
+   mit.inputdata.PARM{3}.pChkPtFreq=mit.coupling.y2s;            % permanent pickup checkpoint file write interval - every year (s)
+   mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+   % Frequency/Amount of Output
+   mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
 
-	% uvelOBWfile vvelOBWfile thetaOBWfile saltOBWfile
-	% uvelOBSfile vvelOBSfile thetaOBSfile saltOBSfile 
-	% }}}
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % input/data.obcs Sponge layer parameters
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	mit.inputdata.OBCS{3}.Vrelaxobcsbound=mit.coupling.coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
+	mit.inputdata.OBCS{3}.Urelaxobcsbound=mit.coupling.coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a meridional OB (s)
 
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % input/data.cal Calendar parameters
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	mit.inputdata.CAL{1}.startdate_1=string(mit.forcing.startdate,'yyyyMMdd'); % yyyyMMdd of start date
+	mit.inputdata.CAL{1}.startDate_2=string(mit.forcing.startdate,'HHmmss');   % HHmmss of start date
 
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % input/data.exf External forcing parameters
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	
+	mit.inputdata.EXF{end}.obcsWstartdate1 = string(mit.forcing.startdate,'yyyyMMdd'); % W boundary start year (YYYY), month (MM), day (DD) to determine record number
+   mit.inputdata.EXF{end}.obcsWperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+   mit.inputdata.EXF{end}.obcsSstartdate1 = string(mit.forcing.startdate,'yyyyMMdd'); % S boundary start year (YYYY), month (MM), day (DD) to determine record number
+   mit.inputdata.EXF{end}.obcsSperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % input/data.diagnostics Diagnostic output parameters
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Output Stream 1: surfDiag (snapshot every month)
+	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
+	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.y2s/12; % (s)
+	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','SHIRshel','ETAN    ','SHIuStar','SHIForcT'};
 
+	% Output Stream 2: dynDiag (time-average every month)
+	mit.inputdata.DIAG{1}.N(2).filename  = '''dynDiag''';
+	mit.inputdata.DIAG{1}.N(2).frequency = mit.coupling.y2s/12; % (s)
+	mit.inputdata.DIAG{1}.N(2).fields    = {'UVEL    ','VVEL    ','WVEL    ','THETA   ','SALT    '};
 
+	% Output Stream 3: SHICE_fwFluxtave (time average every coupled time step)
+	mit.inputdata.DIAG{1}.N(3).filename  = '''SHICE_fwFluxtave''';
+	mit.inputdata.DIAG{1}.N(3).frequency = mit.coupling.coupledTimeStep; % (s)
+	mit.inputdata.DIAG{1}.N(3).fields    = {'SHIfwFlx'};
 
+	% Output Stream 4: SHICE_mass (snapshot every coupled time step)
+   mit.inputdata.DIAG{1}.N(4).filename  = '''SHICE_mass''';
+   mit.inputdata.DIAG{1}.N(4).frequency = -mit.coupling.coupledTimeStep; % (s)
+   mit.inputdata.DIAG{1}.N(4).fields    = {'SHI_mass'};
 
+	% print settings and save mit data
+	disp(['coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
+	disp(['         nsteps = ' num2str(mit.coupling.nsteps) ' s']);
+	disp(['         deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
+
+	savedata(org,mit);
 end % }}}
-
-if perform(org,'PlotMITgcmDomain'), % Plot the MITgcm domain {{{
-	x = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','x');
-	y = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','y');
-	S = ncread('/totten_1/ModelData/ISMIP6/Projections/AIS/Ocean_Forcing/climatology_from_obs_1995-2017/obs_salinity_1995-2017_8km_x_60m.nc','salinity');
-
-	EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
-		-1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
-		-1772089.1945770399,-1772089.1945770399,-1669315.4719493026];
-	% outline of ice domain in y (m)
-	EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
-		-530867.1000391102,-58750.3117179424,170008.8123696489,...
-		70446.7685740285,-420940.0927398402,-420940.0927398402];
-
-	% outline of Naughten et al., 2023
-	lon1 = -140;
-	lon2 = -80;
-	lon = [lon1 lon1:lon2 lon2];
-	lat1 = 62;
-	lat = [90, repmat(lat1,1,length(lon)-2), 90];
-	[x_kn,y_kn] = ll2xy(lat,lon,-1);
-
-	% all of antarctica 
-	AntEXP = expread('/totten_1/ModelData/Antarctica/Exp/Antarctica.exp');
-
-	figure(1); clf; hold on;
-	%imagesc(x,y,S(:,:,1))
-	%bathymetry = interpBedmachineAntarctica(XC,YC,'bed','linear'); % interpolate bed elevation data from BedMachine (m)
-	%imagesc(XC,YC,reshape(bathymetry,Ny,Nx));
-	plot(AntEXP.x,AntEXP.y)
-	set(gca,'YDir','normal')
-	axis equal;
-
-	[xLim yLim] = ll2xy([60 60 60 60],[270 90 180 0],-1);
-	xlim(xLim(1:2));
-	ylim(yLim(3:4));
-	%plot(EXP.x,EXP.y);
-
-	plot([min(xp) min(xp) max(xp) max(xp) min(xp)], [min(yp) max(yp) max(yp) min(yp) min(yp)],'k');
-
-	plot(x_kn,y_kn);
-
-	U_coordOBW = [xp(OB_I).*ones(1,Ny); yc         ]; % (1,:) x coordinates for U on the C Arakawa grid, (2,:) y coordinates for U on the C Arakawa grid
-	V_coordOBW = [xc(OB_I).*ones(1,Ny); yp(1:end-1)]; % (1,:) x coordinates for V on the C Arakawa grid, (2,:) y coordinates for V on the C Arakawa grid
-
-	U_coordOBS = [xp(1:end-1); yc(OB_J).*ones(1,Nx)]; % (1,:) x coordinates for U on the C Arakawa grid, (2,:) y coordinates for U on the C Arakawa grid
-	V_coordOBS = [xc;          yp(OB_J).*ones(1,Nx)]; % (1,:) x coordinates for V on the C Arakawa grid, (2,:) y coordinates for V on the C Arakawa grid
+if perform(org,'RuntimeFiles') % {{{
+	mit=load(org,'RuntimeOptions');
+	
+	% write all of the input data files
+	write_datafile(mit.fname.eedatafile,       mit.inputdata.EEP,      'EXECUTION ENVIRONMENT PARAMETERS');
+	write_datafile(mit.fname.datafile,         mit.inputdata.PARM,     'MODEL PARAMETERS');
+	write_datafile(mit.fname.datapkgfile,      mit.inputdata.PKG,      'PACKAGES');
+	write_datafile(mit.fname.dataobcsfile,     mit.inputdata.OBCS,     'OBCS RUNTIME PARAMETERS');
+	write_datafile(mit.fname.datashelficefile, mit.inputdata.SHELFICE, 'SHELFICE RUNTIME PARAMETERS');
+	write_datafile(mit.fname.datacalfile,      mit.inputdata.CAL,      'CALENDAR PARAMETERS');
+	write_datafile(mit.fname.dataexffile,      mit.inputdata.EXF,      'EXTERNAL FORCINGS PARAMETERS');
+	write_datafile(mit.fname.datadiagfile,     mit.inputdata.DIAG,     'DIAGNOSTICS RUNTIME PARAMETERS');
+end % }}}
+if perform(org,'RunMITgcmInit') % {{{
 end % }}}
 
 % Move back to root directory
@@ -1114,18 +1190,6 @@ disp(['Moving to root directory: ',proph_dir]);
 cd(proph_dir);
 
 % local functions 
-function mit = mitgcmstruct() % {{{
-	% initialize model parameter structure
-	mit = struct();
-	mit.mesh = struct();
-	% initialize parameters for climate forcing model from Naughten et al.,2023
-	%mit.climateforcings.mesh = struct();
-end	% }}}
-function A = loadinitfield(fname,fieldname) % {{{
-	A = getfield(load(fname,fieldname),fieldname); % load state variable
-	A = pagetranspose(reshape(S,size(S,2),size(S,1),size(S,3))); % correct the indexing to column-major
-end	% }}}
-% file writing
 function write_sizefile(fname,SZ) % {{{
 	% Reads from SZ.reffile and writes to fname
 	% INPUT
