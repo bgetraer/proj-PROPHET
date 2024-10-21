@@ -4,12 +4,13 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[];
+steps=[6];
 
 experiment.name='MITgcm_initialization';
-experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
+%experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
 % directory structure {{{
-%mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory
+%mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
+mitgcm_dir='/totten_1/bgetraer/MITgcm_dan'; % MITgcm directory (totten)
 proph_dir = pwd; % base directory for this project
 % define experiment directories {{{
 % make experiments directory if needed
@@ -206,6 +207,9 @@ if perform(org,'MeshInit'), % {{{
 	mit.mesh.zc = zc; % cell center locations in z (m)
 	[mit.mesh.XC, mit.mesh.YC, mit.mesh.ZC] = meshgrid(xc,yc,zc); % all cell center locations in x, y, and z (m)
 	[mit.mesh.hXC, mit.mesh.hYC] = meshgrid(xc,yc);	% horizontal cell center locations in x and y (m)
+	% PROPHET tiling
+	mit.mesh.sNx = sNx; % Number of X points in tile
+	mit.mesh.sNy = sNy; % Number of Y points in tile
 	% Naughten mesh
 	mit.mesh.zc_N = zc_N; % Naughten2023 cell center locations in z (m)
 	mit.mesh.zp_N = zp_N; % Naughten2023 cell face locations in z (m)
@@ -719,7 +723,8 @@ if perform(org,'Bathymetry'), % {{{
 	mit.forcing.obw_mask_N = isnan(squeeze(A(:,1,:)))'; % Naughten nanmask for left boundary
 
 	% Write to file
-	write_binfile(mit.fname.bathyfile,permute(mit.geometry.bathy,[2,1])); % write to binary input file with size Nx Ny
+	fname = ['input/' mit.fname.bathyfile];
+	write_binfile(fname,permute(mit.geometry.bathy,[2,1])); % write to binary input file with size Nx Ny
 
 	% Save mit structure
 	savedata(org,mit);
@@ -727,109 +732,116 @@ end % }}}
 if perform(org,'BoundaryForcings'), % {{{
 	mit=load(org,'Bathymetry');
 
-	D={}; % Initialize cell array for climate forcing data structures
-	for i = 1:length(mit.forcing.exp)
-		% Load all members of the experiment
-		for j = 1:length(mit.forcing.member)
-			fname = [mit.forcing.bdry_prefix mit.forcing.exp{i} mit.forcing.member{j} mit.forcing.suffix]; % file to be loaded
-			fprintf('Loading '); ls(fullfile(mit.forcing.Ndir,fname)); % print out the file being read
-			D{j} = load(fullfile(mit.forcing.Ndir,fname)); % load data into array of structures
-		end
-		% Loop through all fields
-		for k=1:length(mit.forcing.field_bdry)
-			disp(['Processing ' mit.forcing.field_bdry{k}]);
-			% collect field from all members
-			A = []; % matrix to collect field. dim1 is z, dim2 is x or y, dim3 is time (month), dim4 is member (1-10)
-			for j = 1:length(D)
-				A(:,:,:,j) = getfield(D{j},mit.forcing.field_bdry{k});
+	processBF = 0; % flag for actually reprocessing the boundary condition files
+	if processBF
+		D={}; % Initialize cell array for climate forcing data structures
+		for i = 1:length(mit.forcing.exp)
+			% Load all members of the experiment
+			for j = 1:length(mit.forcing.member)
+				fname = [mit.forcing.bdry_prefix mit.forcing.exp{i} mit.forcing.member{j} mit.forcing.suffix]; % file to be loaded
+				fprintf('Loading '); ls(fullfile(mit.forcing.Ndir,fname)); % print out the file being read
+				D{j} = load(fullfile(mit.forcing.Ndir,fname)); % load data into array of structures
 			end
-			% take mean of field across members
-			B = nanmean(A,4);
+			% Loop through all fields
+			for k=1:length(mit.forcing.field_bdry)
+				disp(['Processing ' mit.forcing.field_bdry{k}]);
+				% collect field from all members
+				A = []; % matrix to collect field. dim1 is z, dim2 is x or y, dim3 is time (month), dim4 is member (1-10)
+				for j = 1:length(D)
+					A(:,:,:,j) = getfield(D{j},mit.forcing.field_bdry{k});
+				end
+				% take mean of field across members
+				B = nanmean(A,4);
 
-			% enforce nanmask on boundary condition (avoid interpolation error in velocity)
-			switch mit.forcing.field_bdry_out{k}(end-2:end)
-				case 'obw' % left boundary
-					% the domain extent is actually further into the grounded ice: pad this with nan to reach the correct size
-					B(:,end+1:length(mit.mesh.yc),:)=NaN; % pad the domain with nan 
-					% mask nan values for every page of the matrix
-					for m = 1:size(B,3)
-						ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
-						B(find(mit.forcing.obw_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
-					end
-					% partial cell indexing
-					k_ind = mit.geometry.k_ind(:,1); % vertical index where we need to correct for partial cell
-					zc_hFac = mit.mesh.zp(mit.geometry.k_ind(:,1)) - mit.geometry.hFacDim(:,1)./2; % center for partial cell (m)
-					open_ind = mit.geometry.hFacDim(:,1)>0;
-				case 'obs'
-					% mask nan values for every page of the matrix
-					for m = 1:size(B,3)
-						ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
-						B(find(mit.forcing.obs_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
-					end
-					% partial cell indexing
-					k_ind = mit.geometry.k_ind(1,:); % vertical index where we need to correct for partial cell
-					zc_hFac = mit.mesh.zp(mit.geometry.k_ind(1,:)) - mit.geometry.hFacDim(1,:)./2; % center for partial cell (m)
-					open_ind = mit.geometry.hFacDim(1,:)>0;
-				otherwise 
-					error('parsing failure on boundary identifier');
-			end
+				% enforce nanmask on boundary condition (avoid interpolation error in velocity)
+				switch mit.forcing.field_bdry_out{k}(end-2:end)
+					case 'obw' % left boundary
+						% the domain extent is actually further into the grounded ice: pad this with nan to reach the correct size
+						B(:,end+1:length(mit.mesh.yc),:)=NaN; % pad the domain with nan 
+						% mask nan values for every page of the matrix
+						for m = 1:size(B,3)
+							ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
+							B(find(mit.forcing.obw_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
+						end
+						% partial cell indexing
+						k_ind = mit.geometry.k_ind(:,1); % vertical index where we need to correct for partial cell
+						zc_hFac = mit.mesh.zp(mit.geometry.k_ind(:,1)) - mit.geometry.hFacDim(:,1)./2; % center for partial cell (m)
+						open_ind = mit.geometry.hFacDim(:,1)>0;
+					case 'obs'
+						% mask nan values for every page of the matrix
+						for m = 1:size(B,3)
+							ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
+							B(find(mit.forcing.obs_mask_N) + ind0 - 1) = NaN; % set the NaN values for page m
+						end
+						% partial cell indexing
+						k_ind = mit.geometry.k_ind(1,:); % vertical index where we need to correct for partial cell
+						zc_hFac = mit.mesh.zp(mit.geometry.k_ind(1,:)) - mit.geometry.hFacDim(1,:)./2; % center for partial cell (m)
+						open_ind = mit.geometry.hFacDim(1,:)>0;
+					otherwise 
+						error('parsing failure on boundary identifier');
+				end
 
-			% interpolate from Naughten z grid onto the refined z grid
-			Bq = interp1(mit.mesh.zc_N,B,mit.mesh.zc,'nearest'); % assign nearest real value to all cell centers
+				% interpolate from Naughten z grid onto the refined z grid
+				Bq = interp1(mit.mesh.zc_N,B,mit.mesh.zc,'nearest'); % assign nearest real value to all cell centers
 
-			% assign the correct value for the partial topography cells at the bed
-			for m = 1:size(B,3)
-				for ii = 1:size(B,2)
-					if isnan(Bq(k_ind(ii),ii,m)) & open_ind(ii)
-						Bq(k_ind(ii),ii,m) =  Bq(k_ind(ii)-1,ii,m); % replace NaN values with the cell value above 
+				% assign the correct value for the partial topography cells at the bed
+				for m = 1:size(B,3)
+					for ii = 1:size(B,2)
+						if isnan(Bq(k_ind(ii),ii,m)) & open_ind(ii)
+							Bq(k_ind(ii),ii,m) =  Bq(k_ind(ii)-1,ii,m); % replace NaN values with the cell value above 
+						end
 					end
 				end
-			end
 
-			% plot the vertical grid and bathymetry
-			if k==1 & i==1
-				figure(1);clf;
-				subplot(2,1,1); hold on;
-				h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp_N(1:end-1),B(:,:,1));
-				set(h,'edgecolor','flat');
-				xlim(mit.mesh.yc([1,end]));
-				ylim([-1500,0]);
-				plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
-				yline(mit.mesh.zp_N);xline(mit.mesh.yp);
-				xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
-				title('Naughten vertical grid')
-				subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
+				% plot the vertical grid and bathymetry
+				if k==1 & i==1
+					figure(1);clf;
+					subplot(2,1,1); hold on;
+					h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp_N(1:end-1),B(:,:,1));
+					set(h,'edgecolor','flat');
+					xlim(mit.mesh.yc([1,end]));
+					ylim([-1500,0]);
+					plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
+					yline(mit.mesh.zp_N);xline(mit.mesh.yp);
+					xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
+					title('Naughten vertical grid')
+					subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
 
-				subplot(2,1,2); hold on;
-				h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp(1:end-1),Bq(:,:,1));
-				%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*mit.forcing.obw_mask);
-				%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*(A-mit.forcing.obw_mask));
-				set(h,'edgecolor','flat');
-				xlim(mit.mesh.yc([1,end]));
-				ylim([-1500,0]);
-				plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
-				yline(mit.mesh.zp);xline(mit.mesh.yp);
-				xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
-				title('My vertical grid')
-				subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
-			end
-
-			% divide B into one file per year and write to binary file for MITgcm
-			years = double(D{j}.ystart:D{j}.yend);
-			for n = 1:length(years)
-				% the filename to write to (this will be read by OBCS)
-				fname_out = [mit.forcing.field_bdry_out{k} '.' mit.forcing.exp{i} '_' num2str(years(n))];
-				% print out the file being written
-				if n==1 | n==length(years)
-					disp(['    Saving ' fname_out]);
-				elseif n==2
-					disp('     ...');
+					subplot(2,1,2); hold on;
+					h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp(1:end-1),Bq(:,:,1));
+					%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*mit.forcing.obw_mask);
+					%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*(A-mit.forcing.obw_mask));
+					set(h,'edgecolor','flat');
+					xlim(mit.mesh.yc([1,end]));
+					ylim([-1500,0]);
+					plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
+					yline(mit.mesh.zp);xline(mit.mesh.yp);
+					xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
+					title('My vertical grid')
+					subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
 				end
-				% write the file
-				ind = (1:12) + (n-1)*12; % the index for the months of this year
-				write_binfile(fullfile(mit.forcing.Ddir,fname_out),Bq(:,:,ind));
+
+				% divide B into one file per year and write to binary file for MITgcm
+				years = double(D{j}.ystart:D{j}.yend);
+				for n = 1:length(years)
+					% the filename to write to (this will be read by OBCS)
+					fname_out = [mit.forcing.field_bdry_out{k} '.' mit.forcing.exp{i} '_' num2str(years(n))];
+					% print out the file being written
+					if n==1 | n==length(years)
+						disp(['    Saving ' fname_out]);
+					elseif n==2
+						disp('     ...');
+					end
+					% write the file
+					ind = (1:12) + (n-1)*12; % the index for the months of this year
+					write_binfile(fullfile(mit.forcing.Ddir,fname_out),Bq(:,:,ind));
+				end
 			end
 		end
+	else % do not process the files, just set the start date and move on
+		disp('processBF = FALSE, skipping file processing');
+		D = load(fullfile(mit.forcing.Ndir,mit.forcing.bdry_example));
+		years = double(D.ystart:D.yend);
 	end
 	% save mit
 	mit.forcing.startdate = datetime(years(1),1,1);
@@ -1022,36 +1034,26 @@ if perform(org,'InitialEta'), % {{{
 	savedata(org,mit);
 end % }}}
 if perform(org,'CompileMITgcm'), % {{{
+	mit=load(org,'InitialEta');
 	% Compile-time options {{{
 	% code/SIZE.h {{{
 	SZ=struct; % initialize SIZE.h structure
 	SZ.reffile=fullfile(mitgcm_dir,'model/inc/SIZE.h'); % MITgcm example file
 	% define SZ structure fields
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
-	C     sNx :: Number of X points in tile.
-	C     sNy :: Number of Y points in tile.
-	C     OLx :: Tile overlap extent in X.
-	C     OLy :: Tile overlap extent in Y.
-	C     nSx :: Number of tiles per process in X.
-	C     nSy :: Number of tiles per process in Y.
-	C     nPx :: Number of processes to use in X.
-	C     nPy :: Number of processes to use in Y.
-	C     Nx  :: Number of points in X for the full domain.
-	C     Ny  :: Number of points in Y for the full domain.
-	C     Nr  :: Number of points in vertical direction.
-	SZ.sNx=sNx;   % Number of X points in tile.
-	SZ.sNy=sNy;   % Number of Y points in tile.              
+	SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
+	SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
 	SZ.nSy=1;   % Number of tiles per process in Y.        
-	SZ.nPx=XX; % Number of processes to use in X.         
-	SZ.nPy=100; % Number of processes to use in Y.         
-	SZ.Nx =Nx;  % Number of points in X for the full domain
-	SZ.Ny =Ny;  % Number of points in Y for the full domain
-	SZ.Nr =Nz;  % Number of points in vertical direction.
+	SZ.nPx=numel(mit.mesh.xc)/SZ.sNx/SZ.nSx; % Number of processes to use in X.         
+	SZ.nPy=numel(mit.mesh.yc)/SZ.sNy/SZ.nSy; % Number of processes to use in Y.         
+	SZ.Nx =numel(mit.mesh.xc);  % Number of points in X for the full domain
+	SZ.Ny =numel(mit.mesh.yc);  % Number of points in Y for the full domain
+	SZ.Nr =numel(mit.mesh.zc);  % Number of points in vertical direction.
 	% write to ./code/SIZE.h
-	write_sizefile(sizefile,SZ);
+	write_sizefile(mit.fname.sizefile,SZ);
 	% }}}
 	% code/packages.conf {{{
 	PKGCONF=struct; % initialize Package Configuration structure
@@ -1059,25 +1061,43 @@ if perform(org,'CompileMITgcm'), % {{{
 	PKGCONF.description='Configuration File for Package Inclusion';
 	PKGCONF.pkg={'gfd','obcs','shelfice','cal','exf','diagnostics'};
 	% write to ./code/packages.conf
-	write_pkgconffile(pkgconffile,PKGCONF);
+	write_pkgconffile(mit.fname.pkgconffile,PKGCONF);
 	% }}}
 	% }}}
 	% Compile {{{
-	% locate files and scripts
-	genmake2='${MITGCM_ROOTDIR}/tools/genmake2';
-	optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_ifort+mpi_ice_nas';
-	% clear the build directory
-	cd(proph_dir);
-	!rm -r ./build
-	mkdir('build');
-	cd('./build');
-	% make the MITgcm executable
-	command=[genmake2 ' -mpi -mo ../code -optfile ' optfile ' -rd ${MITGCM_ROOTDIR}'];
-	system(command); % generate Makefile
-	system('make CLEAN');  % prepare for new compilation
-	system('make depend'); % create symbolic links from the local directory to the source file locations
-	system('make');        % compile code and create executable file mitgcmuv
-	cd(proph_dir);
+	prompt = 'Compile MITgcm now? (''y'' or ''Y'' to proceed, ''n'' or ''N'' to skip...\n';
+	txt=0;
+	while txt==0;
+		txt = input(prompt,'s');
+		switch txt
+			case {'y','Y'}
+				cont = 1;
+			case {'n','N'}
+				cont = 0;
+			otherwise
+				txt=0;
+		end
+	end
+	
+	if cont
+		disp('Compile!');
+
+		% locate files and scripts
+		genmake2='${MITGCM_ROOTDIR}/tools/genmake2';
+		%optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_ifort+mpi_ice_nas'; % (pleaides)
+		optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_gfortran'; % (totten)
+		% clear the build directory
+		!rm -r ./build
+		mkdir('build');
+		cd('./build');
+		% make the MITgcm executable
+		command=[genmake2 ' -mpi -mo ../code -optfile ' optfile ' -rd ${MITGCM_ROOTDIR}'];
+		system(command); % generate Makefile
+		system('make CLEAN');  % prepare for new compilation
+		system('make depend'); % create symbolic links from the local directory to the source file locations
+		system('make');        % compile code and create executable file mitgcmuv
+		cd(proph_dir);
+	end
 	% }}}
 end % }}}
 
@@ -1085,19 +1105,8 @@ end % }}}
 if perform(org,'RuntimeOptions') % {{{
 	mit=load(org,'InitialEta');
 
-	% EXPERIMENT
-	disp(['Setting experimtent boundary forcings for ' experiment.forcing]);
-	% Bottom boundary
-	mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  experiment.forcing '''']; % Nx by Nz matrix of v velocity at Southern OB
-   mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile experiment.forcing '''']; % Nx by Nz matrix of pot. temp. at Southern OB
-   mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  experiment.forcing '''']; % Nx by Nz matrix of salin. at Southern OB
-	% Left boundary
-	mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  experiment.forcing '''']; % Nx by Nz matrix of u velocity at Western OB
-   mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile experiment.forcing '''']; % Nx by Nz matrix of pot. temp. at Western OB
-   mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  experiment.forcing '''']; % Nx by Nz matrix of salin. at Western OB
-
 	% TIME STEPPING
-	disp('Setting timestepping options');
+	disp(' - Setting timestepping options');
 	% coupling time step parameters
 	mit.coupling=struct();
 	mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
@@ -1162,31 +1171,106 @@ if perform(org,'RuntimeOptions') % {{{
    mit.inputdata.DIAG{1}.N(4).frequency = -mit.coupling.coupledTimeStep; % (s)
    mit.inputdata.DIAG{1}.N(4).fields    = {'SHI_mass'};
 
-	% print settings and save mit data
-	disp(['coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
-	disp(['         nsteps = ' num2str(mit.coupling.nsteps) ' s']);
-	disp(['         deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
+	% print settings
+	disp(['    coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
+	disp(['             nsteps = ' num2str(mit.coupling.nsteps) ' s']);
+	disp(['             deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
 
-	savedata(org,mit);
-end % }}}
-if perform(org,'RuntimeFiles') % {{{
-	mit=load(org,'RuntimeOptions');
-	
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% write all of the input data files
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(' - Writing runtime options to input/');
 	write_datafile(mit.fname.eedatafile,       mit.inputdata.EEP,      'EXECUTION ENVIRONMENT PARAMETERS');
 	write_datafile(mit.fname.datafile,         mit.inputdata.PARM,     'MODEL PARAMETERS');
 	write_datafile(mit.fname.datapkgfile,      mit.inputdata.PKG,      'PACKAGES');
-	write_datafile(mit.fname.dataobcsfile,     mit.inputdata.OBCS,     'OBCS RUNTIME PARAMETERS');
 	write_datafile(mit.fname.datashelficefile, mit.inputdata.SHELFICE, 'SHELFICE RUNTIME PARAMETERS');
 	write_datafile(mit.fname.datacalfile,      mit.inputdata.CAL,      'CALENDAR PARAMETERS');
 	write_datafile(mit.fname.dataexffile,      mit.inputdata.EXF,      'EXTERNAL FORCINGS PARAMETERS');
 	write_datafile(mit.fname.datadiagfile,     mit.inputdata.DIAG,     'DIAGNOSTICS RUNTIME PARAMETERS');
+
+	% Make one data.obcs file for each experiment
+	for i = 1:length(mit.forcing.exp)
+		% Bottom boundary
+		mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of v velocity at Southern OB
+		mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Southern OB
+		mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Southern OB
+		% Left boundary
+		mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of u velocity at Western OB
+		mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Western OB
+		mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Western OB
+	
+		fname = [mit.fname.dataobcsfile mit.forcing.exp{i}];
+		write_datafile(fname, mit.inputdata.OBCS, 'OBCS RUNTIME PARAMETERS');
+	end
+
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Diverge run directories for each experiment
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(' - Diverging models for climate experiments');
+   for i = 1:length(mit.forcing.exp)
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Directory management
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% make this experiment subdirectory if needed
+		subdir=fullfile(proph_dir,'experiments',mit.forcing.exp{i});
+		if ~exist(subdir)
+			mkdir(subdir);
+		end
+		% rename previous run directory and create new one
+      if exist(fullfile(subdir,'run.old'))
+          system(['\rm -rf ' fullfile(subdir,'run.old')]);
+      end
+      if exist(fullfile(subdir,'run'))
+         system(['\mv ' fullfile(subdir,'run') ' ' fullfile(subdir,'run.old')]);
+      end
+		% make the run directory in subdir
+      mkdir(fullfile(subdir,'run'));
+		rundir=fullfile(subdir,'run');
+
+		disp(['    linking files to ' rundir])
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Link to run directory
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% make links to input files
+		S = dir(fullfile(expdir,'input/*'));
+		for j=1:length(S)
+			if ~S(j).isdir
+				if contains(S(j).name,'data.obcs')
+					if contains(S(j).name,mit.forcing.exp{i})
+						% only link data.obcs for the experiment we are running
+						file_path = fullfile(S(j).folder, S(j).name); % file location
+						link_path = fullfile(rundir,'data.obcs'); % link location
+						command = ['ln -s ' file_path ' ' link_path];
+						system(command);
+					end
+				else
+					file_path = fullfile(S(j).folder, S(j).name); % file location
+					link_path = rundir; % link location
+					command = ['ln -s ' file_path ' ' link_path];
+					system(command);
+				end
+			end
+		end
+		% make links to forcing files
+		S = dir(mit.forcing.Ddir);
+		for j=1:length(S)
+         if ~S(j).isdir & contains(S(j).name,mit.forcing.exp{i})
+               file_path = fullfile(S(j).folder, S(j).name); % file location
+               link_path = rundir; % link location
+               command = ['ln -s ' file_path ' ' link_path];
+               system(command);
+         end
+      end
+	end
+
+	savedata(org,mit);
 end % }}}
 if perform(org,'RunMITgcmInit') % {{{
 end % }}}
 
 % Move back to root directory
-disp(['Moving to root directory: ',proph_dir]);
+disp(['Moving to root directory: ', proph_dir]);
 cd(proph_dir);
 
 % local functions 
@@ -1278,7 +1362,7 @@ function write_datafile(fname,C,head) % {{{
 	%  &
 	%  ...
 	% }}}
-	disp(['writing namelist file to ' fname])
+	disp(['    writing namelist file to ' fname])
 	fileID = fopen(fname,'w');
 	fprintf(fileID,'# %s\n',head); % write descriptive file header 
 
