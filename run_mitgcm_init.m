@@ -4,7 +4,7 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[6];
+steps=[7:8];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -92,6 +92,9 @@ if perform(org,'MeshInit'), % {{{
 	% compile-time files
 	mit.fname.sizefile='code/SIZE.h';
 	mit.fname.pkgconffile='code/packages.conf';
+	mit.fname.diagsizefile='code/DIAGNOSTICS_SIZE.h';
+	mit.fname.obcsoptionsfile='code/OBCS_OPTIONS.h';
+	mit.fname.cppoptionsfile='code/CPP_OPTIONS.h';
 	% run-time namelist files
 	mit.fname.datafile='input/data';
 	mit.fname.dataobcsfile='input/data.obcs';
@@ -242,8 +245,8 @@ if perform(org,'MeshInit'), % {{{
 
 	% equation of state
 	P1.eostype='''JMD95Z''';
-	P1.tRefFile = ['''' mit.fname.saltinitfile '''']; % filename for vertical profile of init. and ref. salin. (g/kg)
-	P1.sRefFile = ['''' mit.fname.thetainitfile '''']; % filename for vertical profile of init. and ref. potential temp. (deg C)
+	P1.tRefFile = ['''' mit.fname.thetainitfile '''']; % filename for vertical profile of init. and ref. salin. (g/kg)
+	P1.sRefFile = ['''' mit.fname.saltinitfile '''']; % filename for vertical profile of init. and ref. potential temp. (deg C)
 	P1.rhoNil=1000; % ref. density for linear EOS (kg/m^3)
 	P1.tAlpha = 3.733E-5; % thermal expansion coefficient (deg C)^-1
 	P1.sBeta  = 7.8434E-4; % haline expansion coefficient (g/kg)^-1
@@ -461,7 +464,7 @@ if perform(org,'MeshInit'), % {{{
 	SHELFICE_P1.SHELFICEsaltTransCoeff=0.000265; % transfer coefficient for salinity (m/s)
 
 	% material properties
-	SHELFICE_P1.rho_ice=917.;     % (constant) mean density of ice shelf (kg/m3)
+	SHELFICE_P1.rhoShelfIce=917.;     % (constant) mean density of ice shelf (kg/m3)
 
 	% drag options
 	SHELFICE_P1.SHELFICEDragQuadratic=.006; % quadratic drag coefficient at bottom ice shelf (non-dim.)
@@ -493,7 +496,7 @@ if perform(org,'MeshInit'), % {{{
 	% CAL_NML: The calendar package namelist {{{
 	CAL.header='CAL_NML';
 
-	CAL.TheCalendar='model'; % choose 'model' calendar
+	CAL.TheCalendar='''model'''; % choose 'model' calendar
 	CAL.startdate_1=[]; % yyyymmdd of start date
 	%CAL.startDate_2=[]; % hhMMss of start date
 	% Benjy: I am not sure exactly what calendarDumps does.
@@ -510,6 +513,8 @@ if perform(org,'MeshInit'), % {{{
 	EXF1=struct; EXF2=struct; EXF3=struct; EXF4=struct; EXF_OBCS=struct; % intialize EXF structures
 	% EXF_NML_01: External Forcings namelist 1 {{{
 	EXF1.header='EXF_NML_01';
+	EXF1.useExfCheckRange  = '.FALSE.'; % check range of input fields and stop if out of range
+	EXF1.exf_iprec = 64; % precision of input fields (32-bit or 64-bit)
 	% }}}
 	% EXF_NML_02: External Forcings namelist 2 {{{
 	EXF2.header='EXF_NML_02';
@@ -521,12 +526,12 @@ if perform(org,'MeshInit'), % {{{
 	EXF4.header='EXF_NML_04';
 	% }}}
 	% EXF_OBCS: External Forcings OBCS options {{{
-	EXF_OBCS.header='EXF_NML_EXF_OBCS';
+	EXF_OBCS.header='EXF_NML_OBCS';
 	EXF_OBCS.useOBCSYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
 	obcsWstartdate1 = []; % W boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
-	obcsWperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	obcsWperiod     = -1;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 	obcsSstartdate1 = []; % S boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
-	obcsSperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	obcsSperiod     = -1;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 	% }}}
 	mit.inputdata.EXF = {EXF1,EXF2,EXF3,EXF4,EXF_OBCS};
 	% }}}
@@ -587,7 +592,9 @@ if perform(org,'Bathymetry'), % {{{
 	% match the boundary condition forcing files from Naughten et al., 2023 exactly. This transition is accomplished by a piece-wise 
 	% linear transition over a length Lb. Along the boundary, we define the bed as being the bottom of the first real valued cell 
 	% when viewed from below. This definition does not address nan data where an ice shelf exists along the boundary, and maintaining 
-	% constant ice thickness along the boundary is accomplished elsewhere.
+	% constant ice thickness along the boundary is accomplished elsewhere. 
+	% Due to the way OBCS is executed, the bathymetry must match the OBCS files at the INSIDE edge of the cell, not the center. This
+	% means that we set the first TWO cells along the boundary to match the Naughten et al., 2023 bathymetry.
 	% Bear Ridge, which extends as a seafloor prominence north from Bear Island/Peninsula, is treated in the Naughten 2023 model with
 	% a solid wall extending along the eastern 300m depth contour from the sea floor to the surface. This wall is intended to represent
 	% the tendency of large ice bergs to ground against Bear Ridge, diverting the current. Here we follow a similar implementation.
@@ -635,8 +642,11 @@ if perform(org,'Bathymetry'), % {{{
 
 	% The bathymetry interpolation scheme
 	B_prime(wallmaskB_prime)=min(B(wallmaskB_prime),0); % do not interpolate over Naughten's wall, just use Bedmachine
+	% shifting the bed to ensure that the first two boundary cells will match the bathymetry
+	B_prime(2,:) = B_prime(1,:); 
+	B_prime(:,2) = B_prime(:,1); 
 	Lb = 10E3; % distance over which to transition the beds (m)
-	a1 = min(min(1/Lb.*(mit.mesh.hYC-mit.mesh.yc(1)),1/Lb.*(mit.mesh.hXC-mit.mesh.xc(1))),1); % weighting between the two beds (0--1)
+	a1 = max(min(min(1/Lb.*(mit.mesh.hYC-mit.mesh.yc(2)),1/Lb.*(mit.mesh.hXC-mit.mesh.xc(2))),1),0); % weighting between the two beds (0--1)
 	% The adjusted bathymetry
 	B_dagger = min(a1.*B + (1-a1).*B_prime, 0); % Adjusted bathymetry, capped at sea level (m)
 
@@ -684,11 +694,11 @@ if perform(org,'Bathymetry'), % {{{
 	% fit upper wall to Naughtens wall at boundary 
 	ind = polywall.Vertices(:,2)<bdryVertices_N(1,2) & polywall.Vertices(:,2)>bdryVertices_N(2,2);
 	ind = 1:find(~ind,1)-1;
-	a1 = min(1/Lb.*(polywall.Vertices(ind,1)-mit.mesh.xc(1)),1);
+	a1 = max(min(1/Lb.*(polywall.Vertices(ind,1)-mit.mesh.xc(2)),1),0);
 	polywall.Vertices(ind,2) = a1.*polywall.Vertices(ind,2) + (1-a1).*bdryVertices_N(1,2);
 	% fit lower wall to Naughtens wall at boundary
 	ind = polywall.Vertices(:,2)<bdryVertices_N(2,2); % fit wall to Naughten's lower wall at boundary 
-	a1 = min(1/Lb.*(polywall.Vertices(ind,1)-mit.mesh.xc(1)),1);
+	a1 = max(min(1/Lb.*(polywall.Vertices(ind,1)-mit.mesh.xc(2)),1),0);
 	polywall.Vertices(ind,2) = a1.*polywall.Vertices(ind,2) + (1-a1).*bdryVertices_N(2,2);
 
 	% enforce wall in bathymetry
@@ -718,13 +728,51 @@ if perform(org,'Bathymetry'), % {{{
 	mit.geometry.hFacDim = hFacDim; % the dimensional thickness of the final cell (m)
 	mit.geometry.hFacC   = hFacC;   % the non-dimensional fractional thickness of the final cell
 	mit.geometry.k_ind   = k_ind;   % index of the upper cell edge above hFac (z-dim index)
-	mit.geometry.open_mask    = opencell_mask(:,:,1:end-1); % mask of open cells in MITgcm
+	mit.geometry.open_mask = opencell_mask(:,:,1:end-1); % mask of open cells in MITgcm
 	mit.forcing.obs_mask_N = isnan(squeeze(A(1,:,:)))'; % Naughten nanmask for bottom boundary
 	mit.forcing.obw_mask_N = isnan(squeeze(A(:,1,:)))'; % Naughten nanmask for left boundary
 
 	% Write to file
 	fname = ['input/' mit.fname.bathyfile];
 	write_binfile(fname,permute(mit.geometry.bathy,[2,1])); % write to binary input file with size Nx Ny
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% find where the boundary cells are open and closed and save to mit.inputdata.OBCS
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% S boundary
+	nopenOBS = sum(mit.geometry.open_mask(1,:,:),3); % number of open cells in column 
+	pind = find(diff(nopenOBS~=0)==1); % index from closed to open cell
+	nind = find(diff(nopenOBS~=0)==-1); % index from open to closed cell
+	ref = [zeros(size(pind)) ones(size(nind))]; 
+	[ind, si] = sort([pind nind]); % where the transitions happen
+	div = diff([0,ind,length(nopenOBS)]); % length of each division of open cells and closed cells
+	if min(pind)<min(nind)
+		ref=mod(0:length(div)-1,2); % start with closed cell, ie 0101010...
+	else
+		ref=mod(1:length(div),2); % start with open cell, ie 1010101...
+	end
+	ob_jsouth = '';
+	for i=1:length(div)
+		ob_jsouth = [ob_jsouth sprintf('%i*%i,',div(i),ref(i))];
+	end
+	mit.inputdata.OBCS{1}.OB_Jsouth=ob_jsouth(1:end-1);
+	% W boundary
+	nopenOBW = sum(mit.geometry.open_mask(:,1,:),3)'; % number of open cells in column 
+	pind = find(diff(nopenOBW~=0)==1); % index from closed to open cell
+	nind = find(diff(nopenOBW~=0)==-1); % index from open to closed cell
+	ref = [zeros(size(pind)) ones(size(nind))]; 
+	[ind, si] = sort([pind nind]); % where the transitions happen
+	div = diff([0,ind,length(nopenOBW)]); % length of each division of open cells and closed cells
+	if min(pind)<min(nind)
+		ref=mod(0:length(div)-1,2); % start with closed cell, ie 0101010...
+	else
+		ref=mod(1:length(div),2); % start with open cell, ie 1010101...
+	end
+	ob_iwest = '';
+   for i=1:length(div)
+      ob_iwest = [ob_iwest sprintf('%i*%i,',div(i),ref(i))];
+   end
+   mit.inputdata.OBCS{1}.OB_Iwest=ob_iwest(1:end-1);
 
 	% Save mit structure
 	savedata(org,mit);
@@ -924,8 +972,18 @@ if perform(org,'InitialEta'), % {{{
 	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
 	Hice = reshape(Hice,[numel(mit.mesh.yc) numel(mit.mesh.xc)]); % reshape from vector to matrix (m)
 	Hice(Hice<2) = 0; % assign zero ice to appropriate areas of the domain
-	shelficemass=Hice*mit.inputdata.SHELFICE{1}.rho_ice; % ice mass per m^2 at cell centers (kg/m^2)
+	shelficemass=Hice*mit.inputdata.SHELFICE{1}.rhoShelfIce; % ice mass per m^2 at cell centers (kg/m^2)
 	
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% set the ice shelf thickness along the edge of the domain 
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% add the ice at the boundary of the ocean model as necessary
+	dMask = diff(mit.forcing.obs_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
+	[K,I] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, I is x dim index)
+	xcOBSshelf = mit.mesh.xc(I); % the cell center location of OBS ice shelf in x (m)
+	draftOBSshelf = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBS ice shelf in z (m)
+	shelficemass(1,I) = abs(draftOBSshelf).* mit.inputdata.PARM{1}.rhoConst; % the corrective value for shelficemass (kg/m2)
+
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    % Define pressure of ocean column
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1002,21 +1060,52 @@ if perform(org,'InitialEta'), % {{{
 			end
 		end
 	end
+
+	%bathyOBS = mit.mesh.zp(mit.geometry.k_ind(1,:))-mit.geometry.hFacDim(1,:);
+	%bathyOBW = mit.mesh.zp(mit.geometry.k_ind(:,1))-mit.geometry.hFacDim(:,1)';
+	%draftOBS = mit.shelfice.topo(1,:)+mit.shelfice.etainit(1,:);
+	%draftOBW = mit.shelfice.topo(:,1)+mit.shelfice.etainit(:,1);
+
+	%clf;hold on;
+	%pcolor(mit.mesh.xc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obs_mask_N));
+	%set(gca,'ydir','normal');axis tight;
+	%plot(mit.mesh.xc,bathyOBS,'r','linewidth',3)
+	%plot(mit.mesh.xc,draftOBS,'--r','linewidth',3)
+
+	%clf;hold on;
+	%pcolor(mit.mesh.yc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obw_mask_N));
+	%set(gca,'xdir','normal');axis tight;
+	%plot(mit.mesh.yc,bathyOBW,'r','linewidth',3)
+	%plot(mit.mesh.yc,draftOBW,'--r','linewidth',3)
+
+	%clf;hold on;
+	%dMask = diff(mit.forcing.obs_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
+	%[K,I] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, I is x dim index)
+	%xcOBSshelf = mit.mesh.xc(I); % the cell center location of OBS ice shelf in x (m)
+	%draftOBSshelf = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBS ice shelf in z (m)
+	%icemassOBSshelf = abs(draftOBSshelf).* mit.inputdata.PARM{1}.rhoConst; % the corrective value for shelficemass (kg/m2)
+
+	%pcolor(mit.mesh.xc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obs_mask_N));
+	%plot(xcOBSshelf,draftOBSshelf,'r','linewidth',3)
+	%set(gca,'ydir','normal');axis tight;
 	
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
 	% write to files
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' mit.fname.etainitfile])
+	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' mit.fname.etainitfile ', ' mit.fname.shelficedmdtfile])
 	fname = ['input/' mit.fname.shelficemassfile];
 	write_binfile(fname,permute(shelficemass,[2,1]));
 	fname = ['input/' mit.fname.shelficetopofile];
 	write_binfile(fname,permute(topo,[2,1]));
 	fname = ['input/' mit.fname.etainitfile];
 	write_binfile(fname,permute(etainit,[2,1]));
+	fname = ['input/' mit.fname.shelficedmdtfile];
+	write_binfile(fname,permute(zeros(size(shelficemass)),[2,1]));
 
 	mit.shelfice.shelficemass = shelficemass;
 	mit.shelfice.topo = topo;
 	mit.shelfice.etainit = etainit;
+	mit.shelfice.dmdtinit = zeros(size(shelficemass));
 
 	% plot
 	figure(1);clf;hold on;
@@ -1036,13 +1125,17 @@ end % }}}
 if perform(org,'CompileMITgcm'), % {{{
 	mit=load(org,'InitialEta');
 	% Compile-time options {{{
-	% code/SIZE.h {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code/SIZE.h
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	SZ=struct; % initialize SIZE.h structure
 	SZ.reffile=fullfile(mitgcm_dir,'model/inc/SIZE.h'); % MITgcm example file
 	% define SZ structure fields
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
-	SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
-	SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
+	%SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
+	%SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
+	SZ.sNx=50;   % Number of X points in tile.
+	SZ.sNy=28;   % Number of Y points in tile.              
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
@@ -1054,15 +1147,91 @@ if perform(org,'CompileMITgcm'), % {{{
 	SZ.Nr =numel(mit.mesh.zc);  % Number of points in vertical direction.
 	% write to ./code/SIZE.h
 	write_sizefile(mit.fname.sizefile,SZ);
-	% }}}
-	% code/packages.conf {{{
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code/packages.conf
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	PKGCONF=struct; % initialize Package Configuration structure
 	% define Package Configuration structure fields
 	PKGCONF.description='Configuration File for Package Inclusion';
 	PKGCONF.pkg={'gfd','obcs','shelfice','cal','exf','diagnostics'};
 	% write to ./code/packages.conf
 	write_pkgconffile(mit.fname.pkgconffile,PKGCONF);
-	% }}}
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code/DIAGNOSTICS_SIZE.h
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	DIAG_SZ=struct; % initialize DIAGNOSTICS_SIZE.h structure
+	DIAG_SZ.reffile=fullfile(mitgcm_dir,'pkg/diagnostics/DIAGNOSTICS_SIZE.h'); % MITgcm example file
+	DIAG_SZ.numDiags = 10*numel(mit.mesh.zc)+5; % maximum size of the storage array for active 2D/3D diagnostics
+	% write to ./code/DIAGNOSTICS_SIZE.h
+   write_diagsizefile(mit.fname.diagsizefile,DIAG_SZ);
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code/OBCS_OPTIONS.h
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	OPT=struct; % initialize OBCS_OPTIONS.h structure
+   OPT.reffile=fullfile(mitgcm_dir,'pkg/obcs/OBCS_OPTIONS.h'); % MITgcm example file
+	% OBCS options to allow
+   OPT.define = {'ALLOW_OBCS_SOUTH','ALLOW_OBCS_WEST','ALLOW_OBCS_PRESCRIBE',...
+		'ALLOW_OBCS_SPONGE','ALLOW_OBCS_BALANCE'}; 
+	% OBCS options to block
+   OPT.undef = {'ALLOW_OBCS_NORTH','ALLOW_OBCS_EAST','ALLOW_ORLANSKI'};
+   % write to ./code/OBCS_OPTIONS.h
+	fname = 'code/OBCS_OPTIONS.h';
+   write_optionsfile(fname,OPT);
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code/SHELFICE_OPTIONS.h
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	OPT=struct; % initialize SHELFICE_OPTIONS.h structure
+   OPT.reffile=fullfile(mitgcm_dir,'pkg/shelfice/SHELFICE_OPTIONS.h'); % MITgcm example file
+	% options to allow
+   OPT.define = {'ALLOW_SHELFICE_REMESHING'};
+	% options to block
+   OPT.undef = {'ALLOW_ISOMIP_TD'};
+   % write to ./code/SHELFICE_OPTIONS.h
+	fname = 'code/SHELFICE_OPTIONS.h';
+   write_optionsfile(fname,OPT);
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % code/CPP_OPTIONS.h
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   OPT=struct; % initialize OPTIONS.h structure
+   OPT.reffile=fullfile(mitgcm_dir,'model/inc/CPP_OPTIONS.h'); % MITgcm example file
+   % options to allow
+   OPT.define = {'ALLOW_SOLVE4_PS_AND_DRAG','NONLIN_FRSURF','SOLVE_DIAGONAL_LOWMEMORY'};
+   % options to block
+   OPT.undef = {};
+   % write to ./code/CPP_OPTIONS.h
+	fname = 'code/CPP_OPTIONS.h';
+   write_optionsfile(fname,OPT);
+
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% code files with non-trivial alterations
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	fnames = {'obcs_balance_flow.F','SHELFICE.h','shelfice_readparms.F',...
+		'shelfice_sea_level_avg.F','SHELFICE_TAVE.h'};
+	nerr = 0;
+	for i=1:length(fnames)
+		fprintf(' - checking for file code/% -30s     ',[fnames{i} '...']);
+		if ~exist(['code/' fnames{i}])
+			fprintf('NO\n');
+			nerr = nerr+1;
+		else
+			fprintf('YES\n');
+		end
+	end
+	if nerr>0
+		error([num2str(nerr) ' compile-time files are missing from code/ directory'])
+	end
+
+	mit.build=struct();
+	mit.build.SZ=SZ;
+	mit.build.PKGCONF=PKGCONF;
+
+	savedata(org,mit);
 	% }}}
 	% Compile {{{
 	prompt = 'Compile MITgcm now? (''y'' or ''Y'' to proceed, ''n'' or ''N'' to skip...\n';
@@ -1103,13 +1272,26 @@ end % }}}
 
 % These steps diverge between experiments
 if perform(org,'RuntimeOptions') % {{{
-	mit=load(org,'InitialEta');
+	mit=load(org,'CompileMITgcm');
+
+	%%%%%%%%%%%%%%%%%%%%%%%
+	% DEBUG
+	%%%%%%%%%%%%%%%%%%%%%%%%%%
+	
+	mit.inputdata.PKG{1}.useDiagnostics='.FALSE.';
+	mit.inputdata.PKG{1}.useOBCS='.FALSE.';
+	mit.inputdata.PKG{1}.useShelfIce='.FALSE.';
+	mit.inputdata.PKG{1}.useCAL='.FALSE.';
+	mit.inputdata.PKG{1}.useEXF='.FALSE.';
+	mit.inputdata.OBCS{1}.OB_Jsouth = [num2str(numel(mit.mesh.xc)) '*0'];
+	mit.inputdata.OBCS{1}.OB_Iwest = [num2str(numel(mit.mesh.yc)) '*0'];
 
 	% TIME STEPPING
 	disp(' - Setting timestepping options');
 	% coupling time step parameters
 	mit.coupling=struct();
-	mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
+	%mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
+	mit.coupling.coupledTimeStep = 500; % coupling time step (s)
 	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
 	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
 	mit.coupling.nsteps = 1; % number of coupled time steps to take
@@ -1154,7 +1336,7 @@ if perform(org,'RuntimeOptions') % {{{
 	% Output Stream 1: surfDiag (snapshot every month)
 	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
 	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.y2s/12; % (s)
-	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','SHIRshel','ETAN    ','SHIuStar','SHIForcT'};
+	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','ETAN    ','SHIuStar','SHIForcT'};
 
 	% Output Stream 2: dynDiag (time-average every month)
 	mit.inputdata.DIAG{1}.N(2).filename  = '''dynDiag''';
@@ -1262,16 +1444,51 @@ if perform(org,'RuntimeOptions') % {{{
                system(command);
          end
       end
+		% make link to mitgcmuv executable
+		file_path = fullfile(expdir,'build/mitgcmuv'); % file location
+		link_path = rundir; % link location
+		command = ['ln -s ' file_path ' ' link_path];
+		system(command);
 	end
 
 	savedata(org,mit);
 end % }}}
 if perform(org,'RunMITgcmInit') % {{{
+	mit=load(org,'RuntimeOptions');
+	rundir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run';
+	cd(rundir);
+	% loop through each coupled step, run the models, save the ouput
+	disp('*  - begin coupled model')
+	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
+	% BEGIN THE LOOP
+	%  n is the number step we are on, from 0:nsteps-1
+	for n=0:(mit.coupling.nsteps-1);
+		display(['STEP ' num2str(n) '/' num2str(mit.coupling.nsteps-1-1)]);
+		t=n*mit.coupling.coupledTimeStep; % current time (s)
+		% update MITgcm transient options
+		newline = [' niter0 = ' num2str(t/mit.inputdata.PARM{3}.deltaT)];
+		command=['!sed "s/.*niter0.*/' newline '/" data > data.temp; mv data.temp data'];
+		eval(command)
+		% run MITgcm
+		disp('about to run MITgcm')
+		tic
+		eval(['!mpirun -np ' int2str(npMIT) ' ./mitgcmuv > out 2> err']);
+		disp('done MITgcm')
+		toc
+	end
 end % }}}
 
 % Move back to root directory
 disp(['Moving to root directory: ', proph_dir]);
 cd(proph_dir);
+
+return
+hFacS=binread('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run/hFacS.data',4,250,420,69);
+hFacW=binread('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run/hFacW.data',4,250,420,69);
+hFacS=permute(hFacS,[2,1,3]);
+hFacW=permute(hFacW,[2,1,3]);
+OBS = squeeze(hFacS(2,:,:))'; 
+OBW = squeeze(hFacW(:,2,:))'; 
 
 % local functions 
 function write_sizefile(fname,SZ) % {{{
@@ -1285,7 +1502,7 @@ function write_sizefile(fname,SZ) % {{{
 		error('MITgcm domain discretization inconsistent');
 	end
 
-	disp(['writing SIZE     file to ' fname]);
+	disp([' - writing SIZE     file to ' fname]);
 	writeID=fopen(fname,'w');
 	readID=fopen(SZ.reffile,'r');
 	% read through the template file, write to the new file
@@ -1332,11 +1549,71 @@ function write_sizefile(fname,SZ) % {{{
 end % }}}
 function write_pkgconffile(fname,PKGCONF) % {{{
 	% WRITE_PKGCONFFILE writes the requested package names to the MITgcm compile-time configuration file
-	disp(['writing config.  file to ' fname]);
+	disp([' - writing config.  file to ' fname]);
 	fileID = fopen(fname,'w');
 	fprintf(fileID,'# %s\n',PKGCONF.description); % write description
 	fprintf(fileID,'%s\n',PKGCONF.pkg{:}); % write packages
 	fclose(fileID);
+end % }}}
+function write_diagsizefile(fname,DIAG_SZ) % {{{
+	% WRITE_DIAGSIZEFILE copies the example DIAGNOSTICS_SIZE.h file from the MITgcm directory and 
+	% changes the numDiags parameter to DIAG_SZ.numDiags 
+	disp([' - writing DIAG_SZ  file to ' fname]);
+	writeID=fopen(fname,'w');
+   readID=fopen(DIAG_SZ.reffile,'r');
+	 % read through the template file, write to the new file
+   formatSpec='%s\n'; % new line after each string is written
+	% read through the commented header, write to new file {{{
+	tline = fgetl(readID);
+   while tline(1)=='C'
+      fprintf(writeID,formatSpec,tline);
+      tline = fgetl(readID);
+   end %}}}
+	% read through the variable declarations, write to new file {{{
+	while contains(tline,'INTEGER')
+		fprintf(writeID,formatSpec,tline);
+		tline = fgetl(readID);
+	end % }}}
+ % read through the variable values, write to new file {{{
+   while contains(tline,'PARAMETER')
+		if contains(tline,'numDiags')
+			tline = ['      PARAMETER( numDiags = ' num2str(DIAG_SZ.numDiags) ' )'];
+		end
+      fprintf(writeID,formatSpec,tline);
+      tline = fgetl(readID);
+	end % }}}
+	% read the rest of the template file, write to new file (assumes MAX_OLX = OLx, and MAX_OLY = OLy) {{{
+	while isstr(tline)
+		fprintf(writeID,formatSpec,tline);
+		tline = fgetl(readID);
+	end % }}}
+	fclose(writeID);
+	fclose(readID);
+end % }}}
+function write_optionsfile(fname,OPT) % {{{
+	% WRITE_OPTIONSFILE copies the example OPT.reffile from the MITgcm directory and 
+	% changes the defined/undefined options as requested
+	disp([' - writing OPTTIONS file to ' fname]);
+	writeID=fopen(fname,'w');
+   readID=fopen(OPT.reffile,'r');
+	 % read through the template file, write to the new file
+   formatSpec='%s\n'; % new line after each string is written
+	% read through the entire file, write to new file
+	tline = fgetl(readID);
+   while isstr(tline)
+		if startsWith(tline,'#')
+			tlinesplit = strsplit(tline,' '); % split the setting and the parameter 
+			if contains(tlinesplit{2},OPT.define)
+				tline = ['#define ' tlinesplit{2}];
+			elseif contains(tlinesplit{2},OPT.undef)
+				tline = ['#undef ' tlinesplit{2}];
+			end
+		end
+		fprintf(writeID,formatSpec,tline);
+		tline = fgetl(readID);
+	end		
+	fclose(writeID);
+	fclose(readID);
 end % }}}
 function write_datafile(fname,C,head) % {{{
 	% WRITE_DATAFILE writes structures in C to fname {{{
@@ -1398,7 +1675,7 @@ function writefields(fileID,P) % {{{
 	fields=fieldnames(P);
 	for i=1:length(fields)
 		val=getfield(P,fields{i});
-		fprintf(fileID,' %s=%s,\n',fields{i},num2str(val));
+		fprintf(fileID,'  %s=%s,\n',fields{i},num2str(val));
 	end
 end  % }}}
 function writediagfields(fileID,N) % {{{
@@ -1418,13 +1695,13 @@ function writediagfields(fileID,N) % {{{
 					dfields=getfield(N(n),subfields{i});
 					dfields=strcat('''',dfields,''', ');
 					RHS=strcat(dfields{:});
-					fprintf(fileID,' %s=%s\n',LHS,RHS); % write to file
+					fprintf(fileID,'  %s=%s\n',LHS,RHS); % write to file
 				case 'levels'
 					error('diag. levels not supported');
 				otherwise
 					LHS=[subfields{i} '(' num2str(n) ')'];
 					RHS=num2str(getfield(N(n),subfields{i}));
-					fprintf(fileID,' %s=%s,\n',LHS,RHS); % write to file
+					fprintf(fileID,'  %s=%s,\n',LHS,RHS); % write to file
 			end
 		end
 		fprintf(fileID,'\n'); % line break
