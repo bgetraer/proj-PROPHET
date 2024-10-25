@@ -4,7 +4,7 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[7:8];
+steps=[8];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -107,6 +107,7 @@ if perform(org,'MeshInit'), % {{{
 	% binary input files
 	mit.fname.delrfile = 'delr.bin';
 	mit.fname.bathyfile='bathy.bin';
+	mit.fname.bathyefffile='bathyeff.bin';
 	mit.fname.thetainitfile='theta.init';
 	mit.fname.saltinitfile='salt.init';
 	mit.fname.etainitfile='eta.init';
@@ -371,7 +372,7 @@ if perform(org,'MeshInit'), % {{{
 	P5.description='Input datasets';
 
 	% input files
-	P5.bathyfile=['''' mit.fname.bathyfile '''']; % filename for 2D ocean bathymetry (m)
+	P5.bathyfile=['''' mit.fname.bathyefffile '''']; % filename for 2D ocean bathymetry (m)
 	P5.psurfinitfile=['''' mit.fname.etainitfile '''']; % filename for 2D specification of initial free surface position (m)
 	% }}}
 	mit.inputdata.PARM={P1,P2,P3,P4,P5};
@@ -527,7 +528,7 @@ if perform(org,'MeshInit'), % {{{
 	% }}}
 	% EXF_OBCS: External Forcings OBCS options {{{
 	EXF_OBCS.header='EXF_NML_OBCS';
-	EXF_OBCS.useOBCSYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
+	EXF_OBCS.useExfYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
 	obcsWstartdate1 = []; % W boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
 	obcsWperiod     = -1;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 	obcsSstartdate1 = []; % S boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
@@ -703,7 +704,9 @@ if perform(org,'Bathymetry'), % {{{
 
 	% enforce wall in bathymetry
 	wallmask = reshape(isinterior(polywall,mit.mesh.hXC(:),mit.mesh.hYC(:)),size(B_prime)); % the Bear Ridge wall mask
-	B_dagger(wallmask)=0;
+	B_dagger(wallmask)=0; % set Bear Ridge wall
+	B_dagger(:,end)=0;    % set E boundary wall
+	B_dagger(end,:)=0;    % set N boundary wall
 
 	% find the partial topography cells and make a mask of the open gridcells
 	disp('Processing Partial Topography Cells');
@@ -780,7 +783,7 @@ end % }}}
 if perform(org,'BoundaryForcings'), % {{{
 	mit=load(org,'Bathymetry');
 
-	processBF = 0; % flag for actually reprocessing the boundary condition files
+	processBF = 1; % flag for actually reprocessing the boundary condition files
 	if processBF
 		D={}; % Initialize cell array for climate forcing data structures
 		for i = 1:length(mit.forcing.exp)
@@ -882,7 +885,7 @@ if perform(org,'BoundaryForcings'), % {{{
 					end
 					% write the file
 					ind = (1:12) + (n-1)*12; % the index for the months of this year
-					write_binfile(fullfile(mit.forcing.Ddir,fname_out),Bq(:,:,ind));
+					write_binfile(fullfile(mit.forcing.Ddir,fname_out),permute(Bq(:,:,ind),[2,1,3]));
 				end
 			end
 		end
@@ -968,7 +971,8 @@ if perform(org,'InitialEta'), % {{{
 	disp('reading ice shelf thickness from ISSM');
 	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_InversionC.mat');
 	md = loadmodel(fname);
-	% interpolate initial ice thickness from ISSM (m)
+	% interpolate initial ice thickness and grounding mask from ISSM (m)
+	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
 	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
 	Hice = reshape(Hice,[numel(mit.mesh.yc) numel(mit.mesh.xc)]); % reshape from vector to matrix (m)
 	Hice(Hice<2) = 0; % assign zero ice to appropriate areas of the domain
@@ -1019,6 +1023,7 @@ if perform(org,'InitialEta'), % {{{
 	Ny = numel(mit.mesh.yc);
 	topo = zeros(Ny,Nx);    % initialize matrix for ice draft depth (m)
 	etainit = zeros(Ny,Nx); % initialize matrix for free surface
+	mit.geometry.bathyeff=mit.geometry.bathy; % initialize "effective bathymetry" -- zero where ice is grounded
 	mergethreshold = mit.inputdata.SHELFICE{1}.SHELFICEMergeThreshold; % dimensionless merge threshold from Jordan, 2017
 	% loop through horizontal cells
 	for ix=1:Nx
@@ -1036,6 +1041,8 @@ if perform(org,'InitialEta'), % {{{
 					end
 					colH = topo(iy,ix) - (mit.mesh.zp(mit.geometry.k_ind(iy,ix)) - mit.geometry.hFacDim(iy,ix)); % height of water column under ice
 					if colH/mit.mesh.delzF(k) < mit.geometry.hFacMin % closed ocean column, ice is grounded
+						% make bathyeff = 0
+						mit.geometry.bathyeff(iy,ix) = 0; % m
 						% put Ro_surf at the last grid face above the bed, close with negative eta
 						topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix)); 
 						etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
@@ -1053,6 +1060,8 @@ if perform(org,'InitialEta'), % {{{
 						end
 					end
 				else % ice is definitely grounded
+					% make bathyeff = 0
+					mit.geometry.bathyeff(iy,ix) = 0; % m
 					% put Ro_surf at the last grid face above the bed, close with negative eta
 					topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix));
 					etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
@@ -1092,7 +1101,8 @@ if perform(org,'InitialEta'), % {{{
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
 	% write to files
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' mit.fname.etainitfile ', ' mit.fname.shelficedmdtfile])
+	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' ...
+		mit.fname.etainitfile ', ' mit.fname.shelficedmdtfile ', ' mit.fname.bathyefffile]);
 	fname = ['input/' mit.fname.shelficemassfile];
 	write_binfile(fname,permute(shelficemass,[2,1]));
 	fname = ['input/' mit.fname.shelficetopofile];
@@ -1101,6 +1111,8 @@ if perform(org,'InitialEta'), % {{{
 	write_binfile(fname,permute(etainit,[2,1]));
 	fname = ['input/' mit.fname.shelficedmdtfile];
 	write_binfile(fname,permute(zeros(size(shelficemass)),[2,1]));
+   fname = ['input/' mit.fname.bathyefffile];
+   write_binfile(fname,permute(mit.geometry.bathyeff,[2,1])); % write to binary input file with size Nx Ny
 
 	mit.shelfice.shelficemass = shelficemass;
 	mit.shelfice.topo = topo;
@@ -1134,8 +1146,8 @@ if perform(org,'CompileMITgcm'), % {{{
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
 	%SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
 	%SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
-	SZ.sNx=50;   % Number of X points in tile.
-	SZ.sNy=28;   % Number of Y points in tile.              
+	SZ.sNx=250;   % Number of X points in tile.
+	SZ.sNy=420;   % Number of Y points in tile.              
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
@@ -1211,8 +1223,10 @@ if perform(org,'CompileMITgcm'), % {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% code files with non-trivial alterations
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% obcs_exf_load.F in Dan's code does not allow -1 option
 	fnames = {'obcs_balance_flow.F','SHELFICE.h','shelfice_readparms.F',...
-		'shelfice_sea_level_avg.F','SHELFICE_TAVE.h'};
+		'shelfice_sea_level_avg.F','SHELFICE_TAVE.h','obcs_exf_load.F',...
+		'exf_getmonthsrec.F'};
 	nerr = 0;
 	for i=1:length(fnames)
 		fprintf(' - checking for file code/% -30s     ',[fnames{i} '...']);
@@ -1265,9 +1279,8 @@ if perform(org,'CompileMITgcm'), % {{{
 		system('make CLEAN');  % prepare for new compilation
 		system('make depend'); % create symbolic links from the local directory to the source file locations
 		system('make');        % compile code and create executable file mitgcmuv
-		cd(proph_dir);
-	end
-	% }}}
+	end % }}}	
+	cd(expdir);
 end % }}}
 
 % These steps diverge between experiments
@@ -1278,20 +1291,22 @@ if perform(org,'RuntimeOptions') % {{{
 	% DEBUG
 	%%%%%%%%%%%%%%%%%%%%%%%%%%
 	
-	mit.inputdata.PKG{1}.useDiagnostics='.FALSE.';
-	mit.inputdata.PKG{1}.useOBCS='.FALSE.';
-	mit.inputdata.PKG{1}.useShelfIce='.FALSE.';
-	mit.inputdata.PKG{1}.useCAL='.FALSE.';
-	mit.inputdata.PKG{1}.useEXF='.FALSE.';
-	mit.inputdata.OBCS{1}.OB_Jsouth = [num2str(numel(mit.mesh.xc)) '*0'];
-	mit.inputdata.OBCS{1}.OB_Iwest = [num2str(numel(mit.mesh.yc)) '*0'];
+	%fname=['input/' mit.fname.etainitfile];
+	%write_binfile(fname,zeros(250,420))
+	%mit.inputdata.PKG{1}.useDiagnostics='.TRUE.';
+	%mit.inputdata.PKG{1}.useOBCS='.TRUE.';
+	%mit.inputdata.PKG{1}.useShelfIce='.TRUE.';
+	%mit.inputdata.PKG{1}.useCAL='.TRUE.';
+	%mit.inputdata.PKG{1}.useEXF='.TRUE.';
+	%mit.inputdata.OBCS{1}.OB_Jsouth = [num2str(numel(mit.mesh.xc)) '*1'];
+	%mit.inputdata.OBCS{1}.OB_Iwest = [num2str(numel(mit.mesh.yc)) '*1'];
 
 	% TIME STEPPING
 	disp(' - Setting timestepping options');
 	% coupling time step parameters
 	mit.coupling=struct();
 	%mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
-	mit.coupling.coupledTimeStep = 500; % coupling time step (s)
+	mit.coupling.coupledTimeStep = 100; % coupling time step (s)
 	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
 	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
 	mit.coupling.nsteps = 1; % number of coupled time steps to take
@@ -1380,6 +1395,16 @@ if perform(org,'RuntimeOptions') % {{{
 		mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of u velocity at Western OB
 		mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Western OB
 		mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Western OB
+
+
+	%	% DEBUG
+	%	mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of v velocity at Southern OB
+	%	mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of pot. temp. at Southern OB
+	%	mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of salin. at Southern OB
+	%	% Left boundary
+	%	mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of u velocity at Western OB
+	%	mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of pot. temp. at Western OB
+	%	mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of salin. at Western OB
 	
 		fname = [mit.fname.dataobcsfile mit.forcing.exp{i}];
 		write_datafile(fname, mit.inputdata.OBCS, 'OBCS RUNTIME PARAMETERS');
@@ -1476,6 +1501,14 @@ if perform(org,'RunMITgcmInit') % {{{
 		disp('done MITgcm')
 		toc
 	end
+
+
+
+	%%%%
+	% CHECK TO OPEN AN UNGROUNDED CELL
+	% GET NEW BATHYMETRY FROM BATHY AND WRITE TO BATHYEFF
+	% 
+	%%%%
 end % }}}
 
 % Move back to root directory
