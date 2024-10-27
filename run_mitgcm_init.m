@@ -4,13 +4,13 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[8];
+steps=[7];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
 % directory structure {{{
 %mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
-mitgcm_dir='/totten_1/bgetraer/MITgcm_dan'; % MITgcm directory (totten)
+mitgcm_dir='/totten_1/bgetraer/MITgcm'; % MITgcm directory (totten)
 proph_dir = pwd; % base directory for this project
 % define experiment directories {{{
 % make experiments directory if needed
@@ -81,10 +81,10 @@ if perform(org,'MeshInit'), % {{{
 	mit.forcing.suffix = 'benjy.mat'; % suffix for all files
 	mit.forcing.bdry_example = [mit.forcing.bdry_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the bdry files
 	mit.forcing.init_example = [mit.forcing.init_prefix mit.forcing.exp{1} mit.forcing.member{1} mit.forcing.suffix]; % one of the init files
-	mit.forcing.field_bdry = {'Tleftbdry','Sleftbdry','Uleftbdry','Tbotbdry','Sbotbdry','Vbotbdry'};  % field names for bdry files
+	mit.forcing.field_bdry = {'Tleftbdry','Sleftbdry','Uleftbdry','Vleftbdry','Tbotbdry','Sbotbdry','Ubotbdry','Vbotbdry'};  % field names for bdry files
 	mit.forcing.field_init = {'Tinit','Sinit'}; % field names for init files
 	mit.forcing.Ddir = fullfile(proph_dir,'climateforcings/data'); % directory path for processed boundary forcing data
-	mit.forcing.field_bdry_out = {'theta.obw','salt.obw','uvel.obw','theta.obs','salt.obs','vvel.obs'}; % data fields
+	mit.forcing.field_bdry_out = {'theta.obw','salt.obw','uvel.obw','vvel.obw','theta.obs','salt.obs','uvel.obs','vvel.obs'}; % data fields
 	mit.forcing.field_init_out = {'theta.init','salt.init'}; % data fields
 	% }}}
 	% MITgcm filenames {{{
@@ -105,24 +105,21 @@ if perform(org,'MeshInit'), % {{{
 	mit.fname.datapkgfile='input/data.pkg';
 	mit.fname.eedatafile='input/eedata';
 	% binary input files
+	mit.fname.treffile='tref.bin';
+	mit.fname.sreffile='sref.bin';
 	mit.fname.delrfile = 'delr.bin';
 	mit.fname.bathyfile='bathy.bin';
-	mit.fname.bathyefffile='bathyeff.bin';
-	mit.fname.thetainitfile='theta.init';
-	mit.fname.saltinitfile='salt.init';
-	mit.fname.etainitfile='eta.init';
 	% binary OBCS files  WITHOUT THE EXPERIMENT SUFFIX (i.e. Paris2, RCP85)
 	mit.fname.thetaOBWfile= ['theta.obw.' ];
 	mit.fname.saltOBWfile = ['salt.obw.'  ];
 	mit.fname.uvelOBWfile = ['uvel.obw.'  ];
+	mit.fname.vvelOBWfile = ['vvel.obw.'  ];
 	mit.fname.thetaOBSfile= ['theta.obs.' ];
 	mit.fname.saltOBSfile = ['salt.obs.'  ];
+	mit.fname.uvelOBSfile = ['uvel.obs.'  ];
 	mit.fname.vvelOBSfile = ['vvel.obs.'  ];
 	% binary SHELFICE files
-	mit.fname.shelficetopofile='shelficetopo.bin';
-	mit.fname.shelficemassfile='shelficemass.bin';
-	mit.fname.shelficedmdtfile='shelficedmdt.bin';
-	mit.fname.shelficesubglfluxfile='shelficesubglflux.bin';
+	mit.fname.draftfile='draft.bin';
 	% }}}
 	% Generate mesh
 	% Vertical discretization {{{
@@ -211,6 +208,9 @@ if perform(org,'MeshInit'), % {{{
 	mit.mesh.zc = zc; % cell center locations in z (m)
 	[mit.mesh.XC, mit.mesh.YC, mit.mesh.ZC] = meshgrid(xc,yc,zc); % all cell center locations in x, y, and z (m)
 	[mit.mesh.hXC, mit.mesh.hYC] = meshgrid(xc,yc);	% horizontal cell center locations in x and y (m)
+	mit.mesh.Nx = numel(xc); % number of cells in x dim
+	mit.mesh.Ny = numel(yc); % number of cells in y dim
+	mit.mesh.Nz = numel(zc); % number of cells in z dim
 	% PROPHET tiling
 	mit.mesh.sNx = sNx; % Number of X points in tile
 	mit.mesh.sNy = sNy; % Number of Y points in tile
@@ -246,8 +246,8 @@ if perform(org,'MeshInit'), % {{{
 
 	% equation of state
 	P1.eostype='''JMD95Z''';
-	P1.tRefFile = ['''' mit.fname.thetainitfile '''']; % filename for vertical profile of init. and ref. salin. (g/kg)
-	P1.sRefFile = ['''' mit.fname.saltinitfile '''']; % filename for vertical profile of init. and ref. potential temp. (deg C)
+	P1.tRefFile = ['''' mit.fname.treffile '''']; % filename for vertical profile of init. and ref. salin. (g/kg)
+	P1.sRefFile = ['''' mit.fname.sreffile '''']; % filename for vertical profile of init. and ref. potential temp. (deg C)
 	P1.rhoNil=1000; % ref. density for linear EOS (kg/m^3)
 	P1.tAlpha = 3.733E-5; % thermal expansion coefficient (deg C)^-1
 	P1.sBeta  = 7.8434E-4; % haline expansion coefficient (g/kg)^-1
@@ -270,25 +270,24 @@ if perform(org,'MeshInit'), % {{{
 	P1.rigidLid='.FALSE.'; % rigid lid off
 	P1.implicitFreeSurface='.TRUE.'; % implicit free surface on
 	P1.exactConserv='.TRUE.'; % exact total volume conservation (recompute divergence after pressure solver) on
-	P1.nonlinFreeSurf=4; % What option is this?
-	useRealFreshWaterFlux = '.TRUE.'; % Conserve volume with freshwater flux (changes free surface/sea level)
+	%P1.nonlinFreeSurf=0; % use the linear free surface
+	P1.useRealFreshWaterFlux = '.FALSE.'; % Conserve volume with freshwater flux (changes free surface/sea level)
 
 	% full and partial cells
 	P1.hFacMin = 0.2; % minimum fractional height of partial gridcell
-	P1.hFacSup = 2.0;   % maximum fractional height of surface cell
-	P1.hFacInf = 0.2; % minimum fractional height of surface cell
+	%P1.hFacSup = 2.0; % maximum fractional height of surface cell
+	%P1.hFacInf = 0.2; % minimum fractional height of surface cell
 
 	% Momentum Equations
-	P1.vectorInvariantMomentum = '.TRUE.'; % use vector-invariant form of momentum equations
+	%P1.vectorInvariantMomentum = '.TRUE.'; % use vector-invariant form of momentum equations
 	P1.implicitViscosity = '.TRUE.'; % compute vertical diffusive fluxes of momentum implicitly
 	P1.viscAr=1.E-4;    % Vertical Eddy Viscosity m^2/s
-	viscAhscheme='constant'; % choose between constant horizontal viscosity and gridscale/flow aware viscosity
+	viscAhscheme='modifiedLeith'; % choose between constant horizontal viscosity and gridscale/flow aware viscosity
 	switch viscAhscheme
 		case 'constant'
 			P1.viscAh=10.0; % Horizontal Eddy Viscosity m^2/s
 		case 'modifiedLeith'
 			P1.viscAhGrid=.01;  % non-dimensional Laplacian grid viscosity parameter (background, constant)
-			%P1.viscA4Grid=.001; % non-dimensional bi-harmonic grid viscosity parameter (background, constant)
 			P1.viscAhGridMax=1; % maximum non-dimensional gridscale viscosity (CFL constraint)
 			P1.viscC2leith=2; % Leith harmonic visc. factor on grad(vort), non-dim. (grid/flow aware viscosity)
 			P1.viscC2leithD=2; % Leith harmonic visc. damping factor on grad(div), non-dim. (grid/flow aware viscosity)
@@ -370,10 +369,8 @@ if perform(org,'MeshInit'), % {{{
 	% structure information
 	P5.header='PARM05';
 	P5.description='Input datasets';
-
 	% input files
-	P5.bathyfile=['''' mit.fname.bathyefffile '''']; % filename for 2D ocean bathymetry (m)
-	P5.psurfinitfile=['''' mit.fname.etainitfile '''']; % filename for 2D specification of initial free surface position (m)
+	P5.bathyfile    =['''' mit.fname.bathyfile '''']; % filename for 2D ocean bathymetry (m)
 	% }}}
 	mit.inputdata.PARM={P1,P2,P3,P4,P5};
 	% }}}
@@ -412,9 +409,9 @@ if perform(org,'MeshInit'), % {{{
 	OBCS_P1.OBWsFile=[]; % Nx by Nz matrix of salin. at Western OB
 
 	OBCS_P1.useOBCSprescribe='.TRUE.'; % prescribe OB conditions
-	OBCS_P1.useOBCSbalance='.TRUE.'; % use OB balance
-	OBCS_P1.OBCS_balanceFacN=1.0; % balance factor for N OB
-	OBCS_P1.OBCS_balanceFacW=1.0; % balance factor for W OB
+	OBCS_P1.useOBCSbalance='.FALSE.'; % use OB balance
+	%OBCS_P1.OBCS_balanceFacN=1.0; % balance factor for N OB
+	%OBCS_P1.OBCS_balanceFacW=1.0; % balance factor for W OB
 
 	% Sponge layer
 	useOBCSsponge=1; % on or off
@@ -447,47 +444,27 @@ if perform(org,'MeshInit'), % {{{
 	% general options
 	SHELFICE_P1.SHELFICEwriteState='.TRUE.'; % write ice shelf state to file
 	SHELFICE_P1.SHELFICEconserve='.TRUE.'; % use conservative form of temperature boundary conditions
-	SHELFICE_P1.SHELFICEMassStepping = '.TRUE.'; % recalculate ice shelf mass at every time step
+	%SHELFICE_P1.SHELFICEMassStepping = '.TRUE.'; % recalculate ice shelf mass at every time step
 
 	% input files
-	SHELFICE_P1.SHELFICEtopoFile=['''' mit.fname.shelficetopofile '''']; % filename for under-ice topography of ice shelves
-	SHELFICE_P1.SHELFICEmassFile=['''' mit.fname.shelficemassfile '''']; % filename for mass of ice shelves
-	SHELFICE_P1.SHELFICEMassDynTendFile=['''' mit.fname.shelficedmdtfile '''']; % filename for mass tendency of ice shelves
+	SHELFICE_P1.SHELFICEtopoFile=['''' mit.fname.draftfile '''']; % filename for under-ice topography of ice shelves
 
 	% boundary layer options
 	SHELFICE_P1.SHELFICEboundaryLayer='.TRUE.'; % use simple boundary layer mixing parameterization
-	SHELFICE_P1.SHI_withBL_realFWflux='.TRUE.'; % use real-FW flux from boundary layer
-	%SHIELFICE_P1.SHI_withBL_uStarTopDz='.TRUE.'; % compute uStar from uVel, vVel averaged over top Dz thickness
+	%SHELFICE_P1.SHI_withBL_realFWflux='.TRUE.'; % use real-FW flux from boundary layer
+	%SHELFICE_P1.SHI_withBL_uStarTopDz='.TRUE.'; % compute uStar from uVel, vVel averaged over top Dz thickness
 
 	% thermodynamic exchange options
 	SHELFICE_P1.SHELFICEuseGammaFrict='.TRUE.'; % use velocity dependent exchange coefficients (Holland and Jenkins 1999) 
 	SHELFICE_P1.SHELFICEheatTransCoeff=0.0135; % transfer coefficient for temperature (m/s)
 	SHELFICE_P1.SHELFICEsaltTransCoeff=0.000265; % transfer coefficient for salinity (m/s)
 
-	% material properties
-	SHELFICE_P1.rhoShelfIce=917.;     % (constant) mean density of ice shelf (kg/m3)
-
 	% drag options
 	SHELFICE_P1.SHELFICEDragQuadratic=.006; % quadratic drag coefficient at bottom ice shelf (non-dim.)
 	SHELFICE_P1.shiCdrag=SHELFICE_P1.SHELFICEDragQuadratic; % set to be the same
 
-	% ice draft free-surface remeshing options
-	SHELFICE_P1.SHELFICERemeshFrequency=3600.0; % how often to remesh the surface cells (s)
-	SHELFICE_P1.SHELFICESplitThreshold=1.3; % maximum fractional height of ice shelf cavity surface cell
-	SHELFICE_P1.SHELFICEMergeThreshold=.29; % minimum fractional height of ice shelf cavity surface cell 
-
-	% subglacial discharge options
-	addrunoff=0;
-	if addrunoff==1
-		SHELFICE_P1.SHELFICEaddrunoff='.TRUE.'; % use runoff
-		SHELFICE_P1.SHELFICESubglFluxFile=['''' mit.fname.shelficesubglfluxfile '''']; % filename for subglacial runoff specification
-	end
-
-	% Dan's options, i think related to the modified melt rate at depth
-	%SHELFICE_P1.SHELFICE_massmin_trueDens='.TRUE.';
-	%SHELFICE_P1.SHELFICE_conserve_ssh='.TRUE.';
-	%SHELFICE_P1.SHELFICEdepthMinMelt=10.;
-	%SHELFICE_P1.SHELFICE_transition_gamma='.FALSE.'
+	% transition gamma options
+	%SHELFICE_P1.SHELFICE_transition_gamma='.TRUE.'
 	%SHELFICE_P1.SHELFICETransGammaThickness=0.
 	% }}}
 	mit.inputdata.SHELFICE = {SHELFICE_P1};
@@ -528,7 +505,7 @@ if perform(org,'MeshInit'), % {{{
 	% }}}
 	% EXF_OBCS: External Forcings OBCS options {{{
 	EXF_OBCS.header='EXF_NML_OBCS';
-	EXF_OBCS.useExfYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
+	EXF_OBCS.useOBCSYearlyFields = '.TRUE.'; % append current year postfix of form _YYYY on filename
 	obcsWstartdate1 = []; % W boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
 	obcsWperiod     = -1;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 	obcsSstartdate1 = []; % S boundary - YYYYMMDD; start year (YYYY), month (MM), day (DD) of field to determine record number
@@ -612,7 +589,7 @@ if perform(org,'Bathymetry'), % {{{
 	fieldname = mit.forcing.field_init{1}; % one of the init state variable fields (Tinit)
 	A = getfield(load(fname,fieldname),fieldname); % load state variable
 	A = pagetranspose(reshape(A,size(A,2),size(A,1),size(A,3))); % correct the indexing to column-major
-	A(end:length(mit.mesh.yc),:) = NaN; % extend to actual boundary
+	A(end:mit.mesh.Ny,:) = NaN; % extend to actual boundary
 	nanbed = flip(~isnan(A),3); % binary mask of real-valued cells
 	% define bed from bottom up (ignore the ice shelf)
 	flipzg = flip(circshift(mit.mesh.zp_N(1:end-1),-1)); % these are the bottoms of the cells, when viewed from below
@@ -808,7 +785,7 @@ if perform(org,'BoundaryForcings'), % {{{
 				switch mit.forcing.field_bdry_out{k}(end-2:end)
 					case 'obw' % left boundary
 						% the domain extent is actually further into the grounded ice: pad this with nan to reach the correct size
-						B(:,end+1:length(mit.mesh.yc),:)=NaN; % pad the domain with nan 
+						B(:,end+1:mit.mesh.Ny,:)=NaN; % pad the domain with nan 
 						% mask nan values for every page of the matrix
 						for m = 1:size(B,3)
 							ind0 = sub2ind(size(B),1,1,m); % linear index of (1,1,m) for page m
@@ -834,6 +811,7 @@ if perform(org,'BoundaryForcings'), % {{{
 
 				% interpolate from Naughten z grid onto the refined z grid
 				Bq = interp1(mit.mesh.zc_N,B,mit.mesh.zc,'nearest'); % assign nearest real value to all cell centers
+				Bq(isnan(Bq)) = 0; % set NaN values to zero (resulting in NaN in solution)
 
 				% assign the correct value for the partial topography cells at the bed
 				for m = 1:size(B,3)
@@ -900,8 +878,22 @@ if perform(org,'BoundaryForcings'), % {{{
 end % }}}
 if perform(org,'InitialConditions'), % {{{
 	mit=load(org,'BoundaryForcings');
-	mit.initialization=struct();
 
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Initial Conditions
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% MITgcm needs U,V,T,S, and EtaN to be defined in order to run. Additionally, SHELFICE needs
+	% the draft to be defined.
+	%   U, V, and EtaN are not explicitly defined and default to zero.
+	%   T and S are given as tRef and sRef, vertical profiles which are then applied over the 
+	% entire domain. 
+	%   draft is defined by interpolation from ISSM, using the ice and ocean masks to ensure
+	% that grounded ice has a draft equal to the MITgcm bathymetry, and open ocean has a draft 
+	% of zero.	
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % Define T and S profiles
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	Dinit = []; % inital data for T and S 
 	for i = 1:length(mit.forcing.exp)
 		% Load all members of the experiment
@@ -921,221 +913,80 @@ if perform(org,'InitialConditions'), % {{{
 			end
 			% take mean of field across members and horizontal dimensions
 			B = squeeze(nanmean(A,[1,2,4]));
-			%sigma = squeeze(nanstd(A,[],[1,2,4]));
-
-			x = mit.mesh.zc_N(~isnan(B));
+			z = mit.mesh.zc_N(~isnan(B));
 			b = B(~isnan(B));
-			%sigma = sigma(~isnan(B));
-			xq = mit.mesh.zc;
-			bq = interp1(x,b,xq,'linear','extrap');
-
-			% save the average state 
-			%fieldname = [mit.forcing.field_init{k}(1),'_',mit.forcing.exp{i}];
-			%mit.initialization.(fieldname) = bq;
+			zq = mit.mesh.zc;
+			bq = interp1(z,b,zq,'linear','extrap');
 			Dinit(k,:,i) = bq;
 		end
 	end
+	% average to get Tref and Sref
+	tRef = mean(Dinit(1,:,:),[3]);
+	sRef = mean(Dinit(2,:,:),[3]);
 
-	% average to get on Tinit and Sinit
-	mit.initialization.Tinit = mean(Dinit(1,:,:),[3]);
-	mit.initialization.Sinit = mean(Dinit(2,:,:),[3]);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % Find the draft along the boundaries that must be enforced throughout the model
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% find the ice shelf thickness along the bottom boundary of the domain from Naughten
+	dMask = diff(mit.forcing.obs_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
+	[K,J] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, J is x dim index)
+	draftOBS = zeros(1,mit.mesh.Nx); % default to zero draft (m)
+	draftOBS(J) = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBS ice shelf in z (m)
+	% find the ice shelf thickness along the left boundary of the domain from Naughten
+	dMask = diff(mit.forcing.obw_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
+	[K,I] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, J is x dim index)
+	draftOBW = zeros(1,mit.mesh.Ny); % default to zero draft (m)
+	draftOBW(I) = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBW ice shelf in z (m)
+	% save to mit structure
+	mit.geometry.draftOBS = draftOBS; % draft at bottom boundary (m)
+	mit.geometry.draftOBW = draftOBW; % draft at left boundary (m)
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % Define initial ice shelf draft from ISSM
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('reading ice shelf draft from ISSM');
+	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_InversionC.mat');
+	md = loadmodel(fname);
+	% interpolate initial ice draft and masks from ISSM
+	draft = zeros(mit.mesh.Ny,mit.mesh.Nx);    % initialize matrix for ice draft depth (m)
+	draft(:)=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.base,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
+	mask_oce=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.mask.ocean_levelset,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',-1); % -1 ocean, 1 grounded
+	mask_ice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.mask.ice_levelset,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',1); % -1 ice, 1 no ice	
+	draft(mask_oce>0)=mit.geometry.bathy(mask_oce>0); % set all grounded ice to have a draft equal to the bathymetry (m)	
+	draft(mask_ice>0)=0; % set all open ocean to have zero draft (m)
+	draft(1,:) = draftOBS; % set draft at bottom boundary (m)
+	draft(:,1) = draftOBW; % set draft at left boundary (m)
 
-	% write to file
-	fname = ['input/' mit.fname.thetainitfile]; 
-	disp(['writing mit.initialization.Tinit to ' fname]);
-	write_binfile(fname,mit.initialization.Tinit);
-	fname = ['input/' mit.fname.saltinitfile]; 
-	disp(['writing mit.initialization.Sinit to ' fname]);
-	write_binfile(fname,mit.initialization.Sinit);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% write input data to files
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	fname = ['input/' mit.fname.treffile]; 
+	disp(['writing tRef to ' fname]);
+	write_binfile(fname,tRef);
+	fname = ['input/' mit.fname.sreffile]; 
+	disp(['writing sRef to ' fname]);
+	write_binfile(fname,sRef);
+   fname = ['input/' mit.fname.draftfile];
+	disp(['writing draft to ' fname]);
+   write_binfile(fname,permute(draft,[2,1]));
+
 
 	figure(1);clf;
 	ax1=subplot(1,2,1); hold on;
 	plot(mit.mesh.zc,Dinit(1,:,1),'linewidth',2);
 	plot(mit.mesh.zc,Dinit(1,:,2),'linewidth',2);
-	plot(mit.mesh.zc,mit.initialization.Tinit,'--','linewidth',2);
+	plot(mit.mesh.zc,tRef,'--','linewidth',2);
 	xlabel('z (m)');,ylabel('T (deg C)');
 	ax2=subplot(1,2,2); hold on;
 	plot(mit.mesh.zc,Dinit(2,:,1),'linewidth',2);
 	plot(mit.mesh.zc,Dinit(2,:,2),'linewidth',2);
-	plot(mit.mesh.zc,mit.initialization.Sinit,'--','linewidth',2);
+	plot(mit.mesh.zc,sRef,'--','linewidth',2);
 	xlabel('z (m)');,ylabel('S (ppt)');
 	legend('Paris2C','RCP85','mean of all','location','sw');
 
 	savedata(org,mit);
 end % }}}
-if perform(org,'InitialEta'), % {{{
-	mit=load(org,'InitialConditions');
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
-	% Define initial ice shelf mass
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
-	disp('reading ice shelf thickness from ISSM');
-	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_InversionC.mat');
-	md = loadmodel(fname);
-	% interpolate initial ice thickness and grounding mask from ISSM (m)
-	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
-	Hice=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.thickness,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
-	Hice = reshape(Hice,[numel(mit.mesh.yc) numel(mit.mesh.xc)]); % reshape from vector to matrix (m)
-	Hice(Hice<2) = 0; % assign zero ice to appropriate areas of the domain
-	shelficemass=Hice*mit.inputdata.SHELFICE{1}.rhoShelfIce; % ice mass per m^2 at cell centers (kg/m^2)
-	
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% set the ice shelf thickness along the edge of the domain 
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% add the ice at the boundary of the ocean model as necessary
-	dMask = diff(mit.forcing.obs_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
-	[K,I] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, I is x dim index)
-	xcOBSshelf = mit.mesh.xc(I); % the cell center location of OBS ice shelf in x (m)
-	draftOBSshelf = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBS ice shelf in z (m)
-	shelficemass(1,I) = abs(draftOBSshelf).* mit.inputdata.PARM{1}.rhoConst; % the corrective value for shelficemass (kg/m2)
-
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % Define pressure of ocean column
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp('solving for ocean column pressures');
-	% define material properties, constants, and equation of state 
-	pa2db=1E-4;       % pascal to decibar
-	g = mit.inputdata.PARM{1}.gravity; % m/s^2
-	rhoNil = mit.inputdata.PARM{1}.rhoNil; % ref density for equation of state (kg/m^3)
-	p=mit.mesh.zc*g*rhoNil*pa2db; % initial guess for pressure in decibar (1 db = 1E-4 kg/(s^2 m))
-	pcnvg=rms(p); % initialize convergence criterion
-	ptol=1e-13; % convergence tolerance for defining the pressure
-	%i=0; % benjy's loop counter, just for debugging
-	while pcnvg>ptol
-		p0=p;                                                  % save last pressure estimate (db)
-		rho=densjmd95(mit.initialization.Sinit,mit.initialization.Tinit,p); % get new estimate of density using equation of state (kg/m^3)
-		drho=rho-rhoNil;                                       % density anomaly (kg/m^3)
-		phiC=cumsum(mit.mesh.delzC(1:end-1).*g.*drho./rhoNil); % cumulative gravitational potential anomaly at the cell centers (m^2/s^2)
-		phiF=[0 cumsum(mit.mesh.delzF.*g.*drho./rhoNil)];      % cumulative gravitational potential anomaly at ALL cell edges (m^2/s^2)
-		p=rhoNil*(mit.mesh.zc*g+phiC)*pa2db;                   % new pressure estimate (db)
-		pcnvg=rms(p-p0);                                       % update convergence criterion
-		%i=i+1; disp(num2str(i)); % loop counter for debugging
-	end
-	massC=rhoNil*(phiC/g+ abs(mit.mesh.zc)); % vertically integrated mass density at cell centers (kg/m^2)
-	massF=rhoNil*(phiF/g+ abs(mit.mesh.zp)); % vertically integrated mass density at ALL cell edges (kg/m^2)
-	
-
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % Calculate ice shelf draft and grounded ice, define free surface
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp('calculating ice shelf draft, topo, and eta');
-	% calculate depth of the ice draft and free surface
-	Nx = numel(mit.mesh.xc);
-	Ny = numel(mit.mesh.yc);
-	topo = zeros(Ny,Nx);    % initialize matrix for ice draft depth (m)
-	etainit = zeros(Ny,Nx); % initialize matrix for free surface
-	mit.geometry.bathyeff=mit.geometry.bathy; % initialize "effective bathymetry" -- zero where ice is grounded
-	mergethreshold = mit.inputdata.SHELFICE{1}.SHELFICEMergeThreshold; % dimensionless merge threshold from Jordan, 2017
-	% loop through horizontal cells
-	for ix=1:Nx
-		for iy=1:Ny
-			mass=shelficemass(iy,ix);     % mass density of current cell (kg/m^2)
-			k = max(find(massF < mass));  % z cell where ice-ocean interface is (lowest cell where ice can displace water at upper cell edge)
-			if ~isempty(k) % there is at least SOME ice
-				if k<=numel(mit.mesh.zc) % ice may not be grounded
-					if (mass < massC(k)) % ice CANNOT displace the water at the center of the kth cell
-						topo(iy,ix)= mit.mesh.zp(k) ...
-							- (mass-massF(k)) * (mit.mesh.delzF(k)/2)/(massC(k)-massF(k)); % place the interface between the upper edge and the center
-					else                 % ice CAN displace the water at the center of the kth cell
-						topo(iy,ix)= mit.mesh.zc(k) ...
-							- (mass-massC(k)) * (mit.mesh.delzF(k)/2)/(massF(k+1)-massC(k)); % place the interface between the center and the next edge
-					end
-					colH = topo(iy,ix) - (mit.mesh.zp(mit.geometry.k_ind(iy,ix)) - mit.geometry.hFacDim(iy,ix)); % height of water column under ice
-					if colH/mit.mesh.delzF(k) < mit.geometry.hFacMin % closed ocean column, ice is grounded
-						% make bathyeff = 0
-						mit.geometry.bathyeff(iy,ix) = 0; % m
-						% put Ro_surf at the last grid face above the bed, close with negative eta
-						topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix)); 
-						etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
-					else
-						% round topo to the cell edge, set eta_init to make difference
-						dr = 1 - (mit.mesh.zp(k)-topo(iy,ix))/mit.mesh.delzF(k); % fraction of kth cell that is open
-						if (dr > mergethreshold) | (k==mit.geometry.k_ind(iy,ix)) % cell is above mergethreshold or there is no open cell below it
-							% bring Ro_surf *up* to closest grid face & make etainit negative to compensate
-							topo(iy,ix) = mit.mesh.zp(k);      % m
-							etainit(iy,ix) = (dr-1)*mit.mesh.delzF(k);   % m
-						else % merge with cell below it
-							% bring Ro_surf *down* to closest grid face & make etainit pos to compensate
-							topo(iy,ix) = mit.mesh.zp(k+1); % m
-							etainit(iy,ix) = (dr)*mit.mesh.delzF(k);     % m
-						end
-					end
-				else % ice is definitely grounded
-					% make bathyeff = 0
-					mit.geometry.bathyeff(iy,ix) = 0; % m
-					% put Ro_surf at the last grid face above the bed, close with negative eta
-					topo(iy,ix) = mit.mesh.zp(mit.geometry.k_ind(iy,ix));
-					etainit(iy,ix) = -mit.geometry.hFacDim(iy,ix);
-				end
-			end
-		end
-	end
-
-	%bathyOBS = mit.mesh.zp(mit.geometry.k_ind(1,:))-mit.geometry.hFacDim(1,:);
-	%bathyOBW = mit.mesh.zp(mit.geometry.k_ind(:,1))-mit.geometry.hFacDim(:,1)';
-	%draftOBS = mit.shelfice.topo(1,:)+mit.shelfice.etainit(1,:);
-	%draftOBW = mit.shelfice.topo(:,1)+mit.shelfice.etainit(:,1);
-
-	%clf;hold on;
-	%pcolor(mit.mesh.xc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obs_mask_N));
-	%set(gca,'ydir','normal');axis tight;
-	%plot(mit.mesh.xc,bathyOBS,'r','linewidth',3)
-	%plot(mit.mesh.xc,draftOBS,'--r','linewidth',3)
-
-	%clf;hold on;
-	%pcolor(mit.mesh.yc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obw_mask_N));
-	%set(gca,'xdir','normal');axis tight;
-	%plot(mit.mesh.yc,bathyOBW,'r','linewidth',3)
-	%plot(mit.mesh.yc,draftOBW,'--r','linewidth',3)
-
-	%clf;hold on;
-	%dMask = diff(mit.forcing.obs_mask_N); % where the mask goes from real value to NaN (0 no change; 1 real value to NaN; -1 NaN to real value)
-	%[K,I] = ind2sub(size(dMask),find(dMask==-1)); % location where NaN values overhang real values (K is z dim index, I is x dim index)
-	%xcOBSshelf = mit.mesh.xc(I); % the cell center location of OBS ice shelf in x (m)
-	%draftOBSshelf = mit.mesh.zp_N(K+1); % the bottom of the ice draft of the OBS ice shelf in z (m)
-	%icemassOBSshelf = abs(draftOBSshelf).* mit.inputdata.PARM{1}.rhoConst; % the corrective value for shelficemass (kg/m2)
-
-	%pcolor(mit.mesh.xc,mit.mesh.zp_N(1:end-1),double(mit.forcing.obs_mask_N));
-	%plot(xcOBSshelf,draftOBSshelf,'r','linewidth',3)
-	%set(gca,'ydir','normal');axis tight;
-	
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%	
-	% write to files
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(['writing ' mit.fname.shelficemassfile ', '  mit.fname.shelficetopofile ', ' ...
-		mit.fname.etainitfile ', ' mit.fname.shelficedmdtfile ', ' mit.fname.bathyefffile]);
-	fname = ['input/' mit.fname.shelficemassfile];
-	write_binfile(fname,permute(shelficemass,[2,1]));
-	fname = ['input/' mit.fname.shelficetopofile];
-	write_binfile(fname,permute(topo,[2,1]));
-	fname = ['input/' mit.fname.etainitfile];
-	write_binfile(fname,permute(etainit,[2,1]));
-	fname = ['input/' mit.fname.shelficedmdtfile];
-	write_binfile(fname,permute(zeros(size(shelficemass)),[2,1]));
-   fname = ['input/' mit.fname.bathyefffile];
-   write_binfile(fname,permute(mit.geometry.bathyeff,[2,1])); % write to binary input file with size Nx Ny
-
-	mit.shelfice.shelficemass = shelficemass;
-	mit.shelfice.topo = topo;
-	mit.shelfice.etainit = etainit;
-	mit.shelfice.dmdtinit = zeros(size(shelficemass));
-
-	% plot
-	figure(1);clf;hold on;
-	draft = topo + etainit;
-	bathy = (mit.mesh.zp(mit.geometry.k_ind) - mit.geometry.hFacDim);
-	Hcol = (draft - bathy);
-	imagesc(Hcol)
-	set(gca,'ydir','normal');axis equal tight;
-	colorbar;
-	contour((draft==bathy),[0.5,0.5],'w');
-	contour(shelficemass,[1E-10,1E-10],'r')
-	legend('grounding line','ice front')
-	title('water column height (m)')
-
-	savedata(org,mit);
-end % }}}
 if perform(org,'CompileMITgcm'), % {{{
-	mit=load(org,'InitialEta');
+	mit=load(org,'InitialConditions');
 	% Compile-time options {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% code/SIZE.h
@@ -1152,11 +1003,11 @@ if perform(org,'CompileMITgcm'), % {{{
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
 	SZ.nSy=1;   % Number of tiles per process in Y.        
-	SZ.nPx=numel(mit.mesh.xc)/SZ.sNx/SZ.nSx; % Number of processes to use in X.         
-	SZ.nPy=numel(mit.mesh.yc)/SZ.sNy/SZ.nSy; % Number of processes to use in Y.         
-	SZ.Nx =numel(mit.mesh.xc);  % Number of points in X for the full domain
-	SZ.Ny =numel(mit.mesh.yc);  % Number of points in Y for the full domain
-	SZ.Nr =numel(mit.mesh.zc);  % Number of points in vertical direction.
+	SZ.nPx=mit.mesh.Nx/SZ.sNx/SZ.nSx; % Number of processes to use in X.         
+	SZ.nPy=mit.mesh.Ny/SZ.sNy/SZ.nSy; % Number of processes to use in Y.         
+	SZ.Nx =mit.mesh.Nx;  % Number of points in X for the full domain
+	SZ.Ny =mit.mesh.Ny;  % Number of points in Y for the full domain
+	SZ.Nr =mit.mesh.Nz;  % Number of points in vertical direction.
 	% write to ./code/SIZE.h
 	write_sizefile(mit.fname.sizefile,SZ);
 	
@@ -1186,9 +1037,9 @@ if perform(org,'CompileMITgcm'), % {{{
    OPT.reffile=fullfile(mitgcm_dir,'pkg/obcs/OBCS_OPTIONS.h'); % MITgcm example file
 	% OBCS options to allow
    OPT.define = {'ALLOW_OBCS_SOUTH','ALLOW_OBCS_WEST','ALLOW_OBCS_PRESCRIBE',...
-		'ALLOW_OBCS_SPONGE','ALLOW_OBCS_BALANCE'}; 
+		'ALLOW_OBCS_SPONGE'}; 
 	% OBCS options to block
-   OPT.undef = {'ALLOW_OBCS_NORTH','ALLOW_OBCS_EAST','ALLOW_ORLANSKI'};
+   OPT.undef = {'ALLOW_OBCS_NORTH','ALLOW_OBCS_EAST','ALLOW_ORLANSKI','ALLOW_OBCS_BALANCE'};
    % write to ./code/OBCS_OPTIONS.h
 	fname = 'code/OBCS_OPTIONS.h';
    write_optionsfile(fname,OPT);
@@ -1199,9 +1050,9 @@ if perform(org,'CompileMITgcm'), % {{{
 	OPT=struct; % initialize SHELFICE_OPTIONS.h structure
    OPT.reffile=fullfile(mitgcm_dir,'pkg/shelfice/SHELFICE_OPTIONS.h'); % MITgcm example file
 	% options to allow
-   OPT.define = {'ALLOW_SHELFICE_REMESHING'};
+   OPT.define = {};
 	% options to block
-   OPT.undef = {'ALLOW_ISOMIP_TD'};
+   OPT.undef = {'ALLOW_ISOMIP_TD','ALLOW_SHELFICE_REMESHING'};
    % write to ./code/SHELFICE_OPTIONS.h
 	fname = 'code/SHELFICE_OPTIONS.h';
    write_optionsfile(fname,OPT);
@@ -1212,9 +1063,9 @@ if perform(org,'CompileMITgcm'), % {{{
    OPT=struct; % initialize OPTIONS.h structure
    OPT.reffile=fullfile(mitgcm_dir,'model/inc/CPP_OPTIONS.h'); % MITgcm example file
    % options to allow
-   OPT.define = {'ALLOW_SOLVE4_PS_AND_DRAG','NONLIN_FRSURF','SOLVE_DIAGONAL_LOWMEMORY'};
+   OPT.define = {'ALLOW_SOLVE4_PS_AND_DRAG','SOLVE_DIAGONAL_LOWMEMORY'};
    % options to block
-   OPT.undef = {};
+   OPT.undef = {'NONLIN_FRSURF'};
    % write to ./code/CPP_OPTIONS.h
 	fname = 'code/CPP_OPTIONS.h';
    write_optionsfile(fname,OPT);
@@ -1224,9 +1075,7 @@ if perform(org,'CompileMITgcm'), % {{{
 	% code files with non-trivial alterations
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% obcs_exf_load.F in Dan's code does not allow -1 option
-	fnames = {'obcs_balance_flow.F','SHELFICE.h','shelfice_readparms.F',...
-		'shelfice_sea_level_avg.F','SHELFICE_TAVE.h','obcs_exf_load.F',...
-		'exf_getmonthsrec.F'};
+	fnames = {}; % {'SHELFICE.h','shelfice_readparms.F','shelfice_thermodynamics.F'};
 	nerr = 0;
 	for i=1:length(fnames)
 		fprintf(' - checking for file code/% -30s     ',[fnames{i} '...']);
@@ -1266,15 +1115,15 @@ if perform(org,'CompileMITgcm'), % {{{
 		disp('Compile!');
 
 		% locate files and scripts
-		genmake2='${MITGCM_ROOTDIR}/tools/genmake2';
+		genmake2=fullfile(mitgcm_dir,'/tools/genmake2');
 		%optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_ifort+mpi_ice_nas'; % (pleaides)
-		optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_gfortran'; % (totten)
+		optfile=fullfile(mitgcm_dir, 'tools/build_options/linux_amd64_gfortran'); % (totten)
 		% clear the build directory
 		!rm -r ./build
 		mkdir('build');
 		cd('./build');
 		% make the MITgcm executable
-		command=[genmake2 ' -mpi -mo ../code -optfile ' optfile ' -rd ${MITGCM_ROOTDIR}'];
+		command=[genmake2 ' -mpi -mo ../code -optfile ' optfile ' -rd ' mitgcm_dir];
 		system(command); % generate Makefile
 		system('make CLEAN');  % prepare for new compilation
 		system('make depend'); % create symbolic links from the local directory to the source file locations
@@ -1333,8 +1182,10 @@ if perform(org,'RuntimeOptions') % {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    % input/data.cal Calendar parameters
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	mit.inputdata.CAL{1}.startdate_1=string(mit.forcing.startdate,'yyyyMMdd'); % yyyyMMdd of start date
-	mit.inputdata.CAL{1}.startDate_2=string(mit.forcing.startdate,'HHmmss');   % HHmmss of start date
+	cal_startdate=mit.forcing.startdate;
+	cal_startdate.Year=cal_startdate.Year+1;
+	mit.inputdata.CAL{1}.startdate_1=string(cal_startdate,'yyyyMMdd'); % yyyyMMdd of start date
+	mit.inputdata.CAL{1}.startDate_2=string(cal_startdate,'HHmmss');   % HHmmss of start date
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    % input/data.exf External forcing parameters
@@ -1388,11 +1239,13 @@ if perform(org,'RuntimeOptions') % {{{
 	% Make one data.obcs file for each experiment
 	for i = 1:length(mit.forcing.exp)
 		% Bottom boundary
+		mit.inputdata.OBCS{1}.OBSuFile=['''' mit.fname.uvelOBSfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of u velocity at Southern OB
 		mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of v velocity at Southern OB
 		mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Southern OB
 		mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Southern OB
 		% Left boundary
 		mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of u velocity at Western OB
+		mit.inputdata.OBCS{1}.OBWvFile=['''' mit.fname.vvelOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of v velocity at Western OB
 		mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Western OB
 		mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Western OB
 
@@ -1522,6 +1375,12 @@ hFacS=permute(hFacS,[2,1,3]);
 hFacW=permute(hFacW,[2,1,3]);
 OBS = squeeze(hFacS(2,:,:))'; 
 OBW = squeeze(hFacW(:,2,:))'; 
+OBS = OBS>0;
+OBW = OBW>0;
+
+ A=rdmds('experiments/Paris2C/run/pickup.ckptA');
+ imagesc(A(:,:,1)')
+ set(gca,'ydir','normal');axis equal tight;
 
 % local functions 
 function write_sizefile(fname,SZ) % {{{
