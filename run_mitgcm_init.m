@@ -4,7 +4,7 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[5:7];
+steps=[1:7];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -323,11 +323,6 @@ if perform(org,'MeshInit'), % {{{
 	% pressure solver
 	P2.cg2dMaxIters=1000; % upper limit on 2D conjugate gradient solver iterations
 	P2.cg2dTargetResidual=1.E-11; % 2D conjugate gradient target residual (non-dim. due to RHS normalization )
-
-	% options set by Dan. I do not know what they do
-	%P2.cg2dmincolumneps = 5;
-	%P2.pReleaseVisc=2;
-	%P2.thincolDamp=100.;
 	% }}}
 	% PARM03: Time stepping parameters {{{
 	% structure information
@@ -454,18 +449,15 @@ if perform(org,'MeshInit'), % {{{
 	%SHELFICE_P1.SHI_withBL_realFWflux='.TRUE.'; % use real-FW flux from boundary layer
 	%SHELFICE_P1.SHI_withBL_uStarTopDz='.TRUE.'; % compute uStar from uVel, vVel averaged over top Dz thickness
 
-	% thermodynamic exchange options
+	% thermodynamic exchange options (SHELFICEsaltTransCoef set automatically through SHELFICEsaltToHeatRatio)
 	SHELFICE_P1.SHELFICEuseGammaFrict='.TRUE.'; % use velocity dependent exchange coefficients (Holland and Jenkins 1999) 
-	SHELFICE_P1.SHELFICEheatTransCoeff=0.0135; % transfer coefficient for temperature (m/s)
-	SHELFICE_P1.SHELFICEsaltTransCoeff=0.000265; % transfer coefficient for salinity (m/s)
+	SHELFICE_P1.SHELFICEheatTransCoeff=1.2E-4; % transfer coefficient for temperature (m/s)
+	SHELFICE_P1.SHELFICE_transition_gamma='.TRUE.'; % use Dan's transition from constant to vel dependent gamma
+	SHELFICE_P1.SHELFICETransGammaThickness=200.; % water column thickness at which to transition
 
 	% drag options
 	SHELFICE_P1.SHELFICEDragQuadratic=.006; % quadratic drag coefficient at bottom ice shelf (non-dim.)
 	SHELFICE_P1.shiCdrag=SHELFICE_P1.SHELFICEDragQuadratic; % set to be the same
-
-	% transition gamma options
-	%SHELFICE_P1.SHELFICE_transition_gamma='.TRUE.'
-	%SHELFICE_P1.SHELFICETransGammaThickness=0.
 	% }}}
 	mit.inputdata.SHELFICE = {SHELFICE_P1};
 	% }}}
@@ -760,7 +752,7 @@ end % }}}
 if perform(org,'BoundaryForcings'), % {{{
 	mit=load(org,'Bathymetry');
 
-	processBF = 1; % flag for actually reprocessing the boundary condition files
+	processBF = 0; % flag for actually reprocessing the boundary condition files
 	if processBF
 		D={}; % Initialize cell array for climate forcing data structures
 		for i = 1:length(mit.forcing.exp)
@@ -1163,7 +1155,7 @@ if perform(org,'RuntimeOptions') % {{{
 	% coupling time step parameters
 	mit.coupling=struct();
 	%mit.coupling.coupledTimeStep = 14*24*60*60; % coupling time step: 2 weeks (s)
-	mit.coupling.coupledTimeStep = 100; % coupling time step (s)
+	mit.coupling.coupledTimeStep = 500; % coupling time step (s)
 	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
 	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
 	mit.coupling.nsteps = 1; % number of coupled time steps to take
@@ -1191,7 +1183,7 @@ if perform(org,'RuntimeOptions') % {{{
    % input/data.cal Calendar parameters
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	cal_startdate=mit.forcing.startdate;
-	cal_startdate.Year=cal_startdate.Year+1;
+	%cal_startdate.Year=cal_startdate.Year+1;
 	mit.inputdata.CAL{1}.startdate_1=string(cal_startdate,'yyyyMMdd'); % yyyyMMdd of start date
 	mit.inputdata.CAL{1}.startDate_2=string(cal_startdate,'HHmmss');   % HHmmss of start date
 
@@ -1210,6 +1202,7 @@ if perform(org,'RuntimeOptions') % {{{
 	% Output Stream 1: surfDiag (snapshot every month)
 	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
 	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.y2s/12; % (s)
+	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.coupledTimeStep; % (s)
 	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','ETAN    ','SHIuStar','SHIForcT','SHItrans'};
 
 	% Output Stream 2: dynDiag (time-average every month)
@@ -1328,6 +1321,14 @@ if perform(org,'RuntimeOptions') % {{{
                link_path = rundir; % link location
                command = ['ln -s ' file_path ' ' link_path];
                system(command);
+					if contains(S(j).name,num2str(mit.forcing.startdate.Year))
+						file_path = fullfile(S(j).folder, S(j).name); % file location
+						splstr = strsplit(S(j).name,'_'); % split the filename base and the year
+						yr = num2str(mit.forcing.startdate.Year-1); % link to previous year
+						link_path = fullfile(rundir,[splstr{1} '_' yr]); % link location from yr0-1 to yr0
+						command = ['ln -s ' file_path ' ' link_path];
+						system(command);
+					end
          end
       end
 		% make link to mitgcmuv executable
