@@ -30,4 +30,16 @@ shelfice_thermodynamics.F
 Calculate gamma based on water column thickness and gammaFac, which
 controls whether we use shiTransCoeffS/T (vel dependent) or 
 SHELFICEsalt/heatTransCoeff (constant). gammaFacFld is a diagnostic 
-output which gives the value of gammaFac at each cell.
+output known by 'SHItrans' which gives the value of gammaFac at 
+each cell.
+
+*******************************************************************
+shelfice_init_fixed.F
+*******************************************************************
+ALLOW_DIAGNOSTICS
+	diagName  = 'SHItrans'
+       diagTitle = 'transition from no-gamma to gamma friction'
+       diagUnits = 'kg/m^2          '
+       diagCode  = 'SM      L1      '
+       CALL DIAGNOSTICS_ADDTOLIST( diagNum,
+     I      diagName, diagCode, diagUnits, diagTitle, 0, myThid )

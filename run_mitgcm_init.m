@@ -4,7 +4,7 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[7];
+steps=[5:7];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -997,8 +997,10 @@ if perform(org,'CompileMITgcm'), % {{{
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
 	%SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
 	%SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
-	SZ.sNx=250;   % Number of X points in tile.
-	SZ.sNy=420;   % Number of Y points in tile.              
+	%SZ.sNx=250;   % Number of X points in tile (one proc)
+	%SZ.sNy=420;   % Number of Y points in tile (one proc)
+	SZ.sNx=50;   % Number of X points in tile (75 proc)
+	SZ.sNy=28;   % Number of Y points in tile (75 proc)
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
@@ -1074,16 +1076,22 @@ if perform(org,'CompileMITgcm'), % {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% code files with non-trivial alterations
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% obcs_exf_load.F in Dan's code does not allow -1 option
-	fnames = {}; % {'SHELFICE.h','shelfice_readparms.F','shelfice_thermodynamics.F'};
+	shelfice_dir = fullfile(expdir, 'shelfice'); % directory where modified shelfice code is kept
+	fnames = {'SHELFICE.h','shelfice_readparms.F', ...
+		'shelfice_thermodynamics.F','shelfice_init_fixed.F'}; % the files we need
 	nerr = 0;
 	for i=1:length(fnames)
 		fprintf(' - checking for file code/% -30s     ',[fnames{i} '...']);
-		if ~exist(['code/' fnames{i}])
+		if exist(fullfile(shelfice_dir, fnames{i}))
+			fprintf('YES\n');
+			% link the found file
+			file_path = fullfile(shelfice_dir, fnames{i}); % file location
+			dest_path = fullfile(expdir,'code',fnames{i}); % file destination
+			command = ['cp ' file_path ' ' dest_path];
+			system(command);
+		else
 			fprintf('NO\n');
 			nerr = nerr+1;
-		else
-			fprintf('YES\n');
 		end
 	end
 	if nerr>0
@@ -1097,7 +1105,7 @@ if perform(org,'CompileMITgcm'), % {{{
 	savedata(org,mit);
 	% }}}
 	% Compile {{{
-	prompt = 'Compile MITgcm now? (''y'' or ''Y'' to proceed, ''n'' or ''N'' to skip...\n';
+	prompt = 'Compile MITgcm now? (''y'' or ''Y'' to proceed, ''n'' or ''N'' to skip)\n';
 	txt=0;
 	while txt==0;
 		txt = input(prompt,'s');
@@ -1154,7 +1162,7 @@ if perform(org,'RuntimeOptions') % {{{
 	disp(' - Setting timestepping options');
 	% coupling time step parameters
 	mit.coupling=struct();
-	%mit.coupling.coupledTimeStep = 24*60*60; % coupling time step (s)
+	%mit.coupling.coupledTimeStep = 14*24*60*60; % coupling time step: 2 weeks (s)
 	mit.coupling.coupledTimeStep = 100; % coupling time step (s)
 	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
 	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
@@ -1168,7 +1176,7 @@ if perform(org,'RuntimeOptions') % {{{
    mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
    mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
    % Restart/Pickup Files
-   mit.inputdata.PARM{3}.pChkPtFreq=mit.coupling.y2s;            % permanent pickup checkpoint file write interval - every year (s)
+   mit.inputdata.PARM{3}.pChkPtFreq=0;            % permanent pickup checkpoint file write interval (s)
    mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
    % Frequency/Amount of Output
    mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
@@ -1202,7 +1210,7 @@ if perform(org,'RuntimeOptions') % {{{
 	% Output Stream 1: surfDiag (snapshot every month)
 	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
 	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.y2s/12; % (s)
-	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','ETAN    ','SHIuStar','SHIForcT'};
+	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','ETAN    ','SHIuStar','SHIForcT','SHItrans'};
 
 	% Output Stream 2: dynDiag (time-average every month)
 	mit.inputdata.DIAG{1}.N(2).filename  = '''dynDiag''';

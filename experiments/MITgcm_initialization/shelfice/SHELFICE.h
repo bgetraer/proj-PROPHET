@@ -139,7 +139,7 @@ CEOP
      &     SHELFICEMassStepping,
      &     SHELFICEDynMassOnly,
      &     SHI_update_kTopC,
-     &     SHELFICETransGammaThickness
+     &     SHELFICE_transition_gamma
       LOGICAL SHELFICEisOn
       LOGICAL useISOMIPTD
       LOGICAL SHELFICEconserve
@@ -158,7 +158,7 @@ CEOP
       LOGICAL SHELFICEMassStepping
       LOGICAL SHELFICEDynMassOnly
       LOGICAL SHI_update_kTopC
-		LOGICAL SHELFICETransGammaThickness
+		LOGICAL SHELFICE_transition_gamma
 
       COMMON /SHELFICE_PARMS_I/
      &     SHELFICEselectDragQuadr
@@ -177,8 +177,9 @@ CEOP
      &     shiCdrag, shiZetaN, shiRc,
      &     shiPrandtl, shiSchmidt, shiKinVisc,
      &     SHELFICEremeshFrequency,
-     &     SHELFICEsplitThreshold, SHELFICEmergeThreshold
-	  &     SHELFICETransGammaThickness
+     &     SHELFICEsplitThreshold,
+     &     SHELFICEmergeThreshold,
+     &     SHELFICETransGammaThickness
 
       _RL SHELFICE_dumpFreq, SHELFICE_taveFreq
       _RL SHELFICEsaltToHeatRatio
