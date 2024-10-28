@@ -1,0 +1,33 @@
+CHANGES ARE MADE TO THE FOLLOWING FILES TO ALLOW FOR TRANSITION 
+IN GAMMA:
+
+*******************************************************************
+SHELFICE.h
+*******************************************************************
+COMMON /SHELFICE_PARMS_R/
+	SHELFICETransGammaThickness
+
+COMMON /SHELFICE_PARMS_L/
+	SHELFICE_transition_gamma
+
+*******************************************************************
+shelfice_readparms.F
+*******************************************************************
+NAMELIST /SHELFICE_PARM01/
+	SHELFICETransGammaThickness
+	SHELFICE_transition_gamma
+
+(default values)
+	SHELFICETransGammaThickness = 0.0
+	SHELFICE_transition_gamma = .FALSE.
+
+*******************************************************************
+shelfice_thermodynamics.F
+*******************************************************************
+!LOCAL VARIABLES
+	gammaFac, col_thick, gammaFacFld
+
+Calculate gamma based on water column thickness and gammaFac, which
+controls whether we use shiTransCoeffS/T (vel dependent) or 
+SHELFICEsalt/heatTransCoeff (constant). gammaFacFld is a diagnostic 
+output which gives the value of gammaFac at each cell.
