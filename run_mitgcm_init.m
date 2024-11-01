@@ -3,14 +3,19 @@
 %	Initialize MITgcm
 %  Compile MITgcm
 %  Run MITgcm
+%
+% Experiments:
+%   'RCP85'   % ensemble average forcings from ISMIP-6
+%   'Paris2C' % ensemble average forcings from Paris 2
+%   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
-steps=[1:7];
+steps=[7];
 
-experiment.name='MITgcm_initialization';
-%experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
+experiment.name='RCP85';
+experiment.init='MITgcm_initialization';
 % directory structure {{{
-%mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
-mitgcm_dir='/totten_1/bgetraer/MITgcm'; % MITgcm directory (totten)
+mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
+%mitgcm_dir='/totten_1/bgetraer/MITgcm'; % MITgcm directory (totten)
 proph_dir = pwd; % base directory for this project
 % define experiment directories {{{
 % make experiments directory if needed
@@ -18,26 +23,32 @@ proph_dir = pwd; % base directory for this project
 if ~exist(fullfile(proph_dir,'experiments'))
 	mkdir(fullfile(proph_dir,'experiments'));
 end
-% make this experiment directory if needed
-expdir=fullfile(proph_dir,'experiments',experiment.name);
-if ~exist(expdir)
-	mkdir(expdir);
+% make the initialization experiment directory if needed
+initdir=fullfile(proph_dir,'experiments',experiment.init);
+if ~exist(initdir)
+	mkdir(initdir);
 end
 % make code directory if needed
 % this will hold the current compilation of MITgcm
-if ~exist(fullfile(expdir,'code'))
-	mkdir(fullfile(expdir,'code'));
+if ~exist(fullfile(initdir,'code'))
+	mkdir(fullfile(initdir,'code'));
 end
 % make input directory if needed
 % this will hold the runtime options for MITgcm
-if ~exist(fullfile(expdir,'input'))
-	mkdir(fullfile(expdir,'input'));
+if ~exist(fullfile(initdir,'input'))
+	mkdir(fullfile(initdir,'input'));
 end
 % make model directory if needed
 % this will hold md structures from ISSM
-modeldir=fullfile(expdir,'Models');
+modeldir=fullfile(initdir,'Models');
 if ~exist(modeldir)
 	mkdir(modeldir);
+end
+% make experiment directory if needed
+% this is where the different runs will occur
+expdir=fullfile(proph_dir,'experiments',experiment.name);
+if ~exist(expdir)
+   mkdir(expdir);
 end
 % }}}
 % check for climate forcing directory {{{
@@ -57,8 +68,8 @@ end
 % }}}
 org=organizer('repository',modeldir,'prefix','PROPHET_mitgcm_init_','steps',steps);
 % Move into the experiment directory
-disp(['Moving to experiment directory: ', expdir]);
-cd(expdir); 
+disp(['Moving to experiment directory: ', initdir]);
+cd(initdir); 
 
 % These steps are the same for each experiment
 if perform(org,'MeshInit'), % {{{	
@@ -338,8 +349,8 @@ if perform(org,'MeshInit'), % {{{
 	P3.cAdjFreq = -1; % <0 sets frequency of convective adj. scheme to deltaT (s)
 
 	% Restart/Pickup Files
-	P3.pChkPtFreq=[]; % permanent restart/pickup checkpoint file write interval (s)
-	P3.ChkPtFreq=[]; % rolling restart/pickup checkpoint file write interval (s)
+	P3.pChkptFreq=[]; % permanent restart/pickup checkpoint file write interval (s)
+	P3.ChkptFreq=[]; % rolling restart/pickup checkpoint file write interval (s)
 
 	% Frequency/Amount of Output
 	P3.monitorFreq=[];  % interval to write monitor output (s)
@@ -475,11 +486,6 @@ if perform(org,'MeshInit'), % {{{
 	mit.inputdata.CAL = {CAL};
 	% }}}
 	% input/data.exf {{{
-	switch experiment.name
-		case 'CLIM'   % monthly climatology 2001-2012 from Paris 2
-		case 'RCP85'  % ensemble average forcings from ISMIP-6
-		case 'PARIS2' % ensemble average forcings from Paris 2
-	end
 	EXF1=struct; EXF2=struct; EXF3=struct; EXF4=struct; EXF_OBCS=struct; % intialize EXF structures
 	% EXF_NML_01: External Forcings namelist 1 {{{
 	EXF1.header='EXF_NML_01';
@@ -608,7 +614,8 @@ if perform(org,'Bathymetry'), % {{{
 
 	% Bedmachine Bathymetry
 	disp('Processing Bedmachine Bathymetry');
-	B = interpBedmachineAntarctica(mit.mesh.hXC,mit.mesh.hYC,'bed','nearest'); % B is the bed from Bedmachine Antarctica
+	bedmachinepath='/nobackup/bgetraer/ModelData/BedMachine/BedMachineAntarctica-v4.0.nc'; % path to dataset
+	B = interpBedmachineAntarctica(mit.mesh.hXC,mit.mesh.hYC,'bed','nearest',bedmachinepath); % B is the bed from Bedmachine Antarctica
 
 	% The bathymetry interpolation scheme
 	B_prime(wallmaskB_prime)=min(B(wallmaskB_prime),0); % do not interpolate over Naughten's wall, just use Bedmachine
@@ -814,34 +821,6 @@ if perform(org,'BoundaryForcings'), % {{{
 					end
 				end
 
-				% plot the vertical grid and bathymetry
-				if k==1 & i==1
-					figure(1);clf;
-					subplot(2,1,1); hold on;
-					h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp_N(1:end-1),B(:,:,1));
-					set(h,'edgecolor','flat');
-					xlim(mit.mesh.yc([1,end]));
-					ylim([-1500,0]);
-					plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
-					yline(mit.mesh.zp_N);xline(mit.mesh.yp);
-					xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
-					title('Naughten vertical grid')
-					subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
-
-					subplot(2,1,2); hold on;
-					h=pcolor(mit.mesh.yp(1:end-1),mit.mesh.zp(1:end-1),Bq(:,:,1));
-					%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*mit.forcing.obw_mask);
-					%h=pcolor(mit.mesh.yc,mit.mesh.zc,1*(A-mit.forcing.obw_mask));
-					set(h,'edgecolor','flat');
-					xlim(mit.mesh.yc([1,end]));
-					ylim([-1500,0]);
-					plot(mit.mesh.yc,mit.geometry.bathy(:,1),'r','linewidth',2);
-					yline(mit.mesh.zp);xline(mit.mesh.yp);
-					xlim([-5.6 -4.6]*1E5);ylim([-1000 -500]);
-					title('My vertical grid')
-					subtitle([mit.forcing.field_bdry{k} ', red is bathymetry'])
-				end
-
 				% divide B into one file per year and write to binary file for MITgcm
 				years = double(D{j}.ystart:D{j}.yend);
 				for n = 1:length(years)
@@ -961,20 +940,6 @@ if perform(org,'InitialConditions'), % {{{
 	disp(['writing draft to ' fname]);
    write_binfile(fname,permute(draft,[2,1]));
 
-
-	figure(1);clf;
-	ax1=subplot(1,2,1); hold on;
-	plot(mit.mesh.zc,Dinit(1,:,1),'linewidth',2);
-	plot(mit.mesh.zc,Dinit(1,:,2),'linewidth',2);
-	plot(mit.mesh.zc,tRef,'--','linewidth',2);
-	xlabel('z (m)');,ylabel('T (deg C)');
-	ax2=subplot(1,2,2); hold on;
-	plot(mit.mesh.zc,Dinit(2,:,1),'linewidth',2);
-	plot(mit.mesh.zc,Dinit(2,:,2),'linewidth',2);
-	plot(mit.mesh.zc,sRef,'--','linewidth',2);
-	xlabel('z (m)');,ylabel('S (ppt)');
-	legend('Paris2C','RCP85','mean of all','location','sw');
-
 	savedata(org,mit);
 end % }}}
 if perform(org,'CompileMITgcm'), % {{{
@@ -987,12 +952,12 @@ if perform(org,'CompileMITgcm'), % {{{
 	SZ.reffile=fullfile(mitgcm_dir,'model/inc/SIZE.h'); % MITgcm example file
 	% define SZ structure fields
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
-	%SZ.sNx=mit.mesh.sNx;   % Number of X points in tile.
-	%SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.              
+	SZ.sNx=mit.mesh.sNx;   % Number of X points in tile. (140 proc)
+	SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile. (140 proc)            
 	%SZ.sNx=250;   % Number of X points in tile (one proc)
 	%SZ.sNy=420;   % Number of Y points in tile (one proc)
-	SZ.sNx=50;   % Number of X points in tile (75 proc)
-	SZ.sNy=28;   % Number of Y points in tile (75 proc)
+	%SZ.sNx=50;   % Number of X points in tile (75 proc)
+	%SZ.sNy=28;   % Number of Y points in tile (75 proc)
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
@@ -1068,7 +1033,7 @@ if perform(org,'CompileMITgcm'), % {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% code files with non-trivial alterations
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	shelfice_dir = fullfile(expdir, 'shelfice'); % directory where modified shelfice code is kept
+	shelfice_dir = fullfile(initdir, 'shelfice'); % directory where modified shelfice code is kept
 	fnames = {'SHELFICE.h','shelfice_readparms.F', ...
 		'shelfice_thermodynamics.F','shelfice_init_fixed.F'}; % the files we need
 	nerr = 0;
@@ -1078,7 +1043,7 @@ if perform(org,'CompileMITgcm'), % {{{
 			fprintf('YES\n');
 			% link the found file
 			file_path = fullfile(shelfice_dir, fnames{i}); % file location
-			dest_path = fullfile(expdir,'code',fnames{i}); % file destination
+			dest_path = fullfile(initdir,'code',fnames{i}); % file destination
 			command = ['cp ' file_path ' ' dest_path];
 			system(command);
 		else
@@ -1116,8 +1081,8 @@ if perform(org,'CompileMITgcm'), % {{{
 
 		% locate files and scripts
 		genmake2=fullfile(mitgcm_dir,'/tools/genmake2');
-		%optfile='${MITGCM_ROOTDIR}/tools/build_options/linux_amd64_ifort+mpi_ice_nas'; % (pleaides)
-		optfile=fullfile(mitgcm_dir, 'tools/build_options/linux_amd64_gfortran'); % (totten)
+		optfile=fullfile(mitgcm_dir,'tools/build_options/linux_amd64_ifort+mpi_ice_nas'); % (pleaides)
+		%optfile=fullfile(mitgcm_dir, 'tools/build_options/linux_amd64_gfortran'); % (totten)
 		% clear the build directory
 		!rm -r ./build
 		mkdir('build');
@@ -1129,36 +1094,20 @@ if perform(org,'CompileMITgcm'), % {{{
 		system('make depend'); % create symbolic links from the local directory to the source file locations
 		system('make');        % compile code and create executable file mitgcmuv
 	end % }}}	
-	cd(expdir);
+	cd(initdir);
 end % }}}
 
 % These steps diverge between experiments
-if perform(org,'RuntimeOptions') % {{{
+if perform(org,'RuntimeOptionsOcean') % {{{
 	mit=load(org,'CompileMITgcm');
-
-	%%%%%%%%%%%%%%%%%%%%%%%
-	% DEBUG
-	%%%%%%%%%%%%%%%%%%%%%%%%%%
-	
-	%fname=['input/' mit.fname.etainitfile];
-	%write_binfile(fname,zeros(250,420))
-	%mit.inputdata.PKG{1}.useDiagnostics='.TRUE.';
-	%mit.inputdata.PKG{1}.useOBCS='.TRUE.';
-	%mit.inputdata.PKG{1}.useShelfIce='.TRUE.';
-	%mit.inputdata.PKG{1}.useCAL='.TRUE.';
-	%mit.inputdata.PKG{1}.useEXF='.TRUE.';
-	%mit.inputdata.OBCS{1}.OB_Jsouth = [num2str(numel(mit.mesh.xc)) '*1'];
-	%mit.inputdata.OBCS{1}.OB_Iwest = [num2str(numel(mit.mesh.yc)) '*1'];
 
 	% TIME STEPPING
 	disp(' - Setting timestepping options');
 	% coupling time step parameters
-	mit.coupling=struct();
-	%mit.coupling.coupledTimeStep = 14*24*60*60; % coupling time step: 2 weeks (s)
-	mit.coupling.coupledTimeStep = 500; % coupling time step (s)
-	mit.coupling.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
-	mit.coupling.y2s = mit.coupling.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
-	mit.coupling.nsteps = 1; % number of coupled time steps to take
+	mit.timestepping=struct();
+	mit.timestepping.y2d = 360; % use 12 months of 30 days each ('model' calendar, see input/data.cal) (d/yr) 
+	mit.timestepping.y2s = mit.timestepping.y2d*24*60*60; % y2s using 'model' calendar (s/yr)
+	mit.timestepping.spinupduration = 3*mit.timestepping.y2s; % spinup duration: 3 Model years (2010,2011,2012) (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% input/data Time stepping parameters
@@ -1166,18 +1115,18 @@ if perform(org,'RuntimeOptions') % {{{
 	% Run Start and Duration
    mit.inputdata.PARM{3}.nIter0=0;        % starting timestep iteration number
    mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
-   mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
+   mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.spinupduration/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
    % Restart/Pickup Files
-   mit.inputdata.PARM{3}.pChkPtFreq=0;            % permanent pickup checkpoint file write interval (s)
-   mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+   mit.inputdata.PARM{3}.pChkptFreq=0;								% permanent pickup checkpoint file write interval (s)
+   mit.inputdata.PARM{3}.ChkptFreq=mit.timestepping.y2s/24; % temporary pickup checkpoint file write interval - twice per model month (s)
    % Frequency/Amount of Output
-   mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
+   mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.y2s/24; % interval to write monitor output - twice per model month (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    % input/data.obcs Sponge layer parameters
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	mit.inputdata.OBCS{3}.Vrelaxobcsbound=mit.coupling.coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
-	mit.inputdata.OBCS{3}.Urelaxobcsbound=mit.coupling.coupledTimeStep*10; % relaxation time scale at the outermost sponge layer point of a meridional OB (s)
+	mit.inputdata.OBCS{3}.Vrelaxobcsbound=1*(24*60*60); % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
+	mit.inputdata.OBCS{3}.Urelaxobcsbound=1*(24*60*60); % relaxation time scale at the outermost sponge layer point of a meridional OB (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    % input/data.cal Calendar parameters
@@ -1201,30 +1150,34 @@ if perform(org,'RuntimeOptions') % {{{
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Output Stream 1: surfDiag (snapshot every month)
 	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
-	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.y2s/12; % (s)
-	mit.inputdata.DIAG{1}.N(1).frequency = -mit.coupling.coupledTimeStep; % (s)
-	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','SHI_mass','ETAN    ','SHIuStar','SHIForcT','SHItrans'};
+	mit.inputdata.DIAG{1}.N(1).frequency = -mit.timestepping.y2s/12; % (s)
+	mit.inputdata.DIAG{1}.N(1).fields    = {'SHIfwFlx','ETAN    ','SHIuStar','SHIForcT','SHItrans'};
 
 	% Output Stream 2: dynDiag (time-average every month)
 	mit.inputdata.DIAG{1}.N(2).filename  = '''dynDiag''';
-	mit.inputdata.DIAG{1}.N(2).frequency = mit.coupling.y2s/12; % (s)
+	mit.inputdata.DIAG{1}.N(2).frequency = mit.timestepping.y2s/12; % (s)
 	mit.inputdata.DIAG{1}.N(2).fields    = {'UVEL    ','VVEL    ','WVEL    ','THETA   ','SALT    '};
 
-	% Output Stream 3: SHICE_fwFluxtave (time average every coupled time step)
+	% Output Stream 3: SHICE_fwFluxtave (time average twice per month)
 	mit.inputdata.DIAG{1}.N(3).filename  = '''SHICE_fwFluxtave''';
-	mit.inputdata.DIAG{1}.N(3).frequency = mit.coupling.coupledTimeStep; % (s)
+	mit.inputdata.DIAG{1}.N(3).frequency = mit.timestepping.y2s/24; % (s)
 	mit.inputdata.DIAG{1}.N(3).fields    = {'SHIfwFlx'};
 
-	% Output Stream 4: SHICE_mass (snapshot every coupled time step)
-   mit.inputdata.DIAG{1}.N(4).filename  = '''SHICE_mass''';
-   mit.inputdata.DIAG{1}.N(4).frequency = -mit.coupling.coupledTimeStep; % (s)
-   mit.inputdata.DIAG{1}.N(4).fields    = {'SHI_mass'};
-
 	% print settings
-	disp(['    coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
-	disp(['             nsteps = ' num2str(mit.coupling.nsteps) ' s']);
-	disp(['             deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
+	parm={'spinupduration',mit.timestepping.spinupduration./mit.timestepping.y2s,' y';...
+		'deltaT',mit.inputdata.PARM{3}.deltaT,' s';...
+		'ChkptFreq',mit.inputdata.PARM{3}.ChkptFreq./24/60/60,' d';...
+		'relaxobcsbound',mit.inputdata.OBCS{3}.Vrelaxobcsbound./24/60/60,' d';...
+		'startdate',[],string(cal_startdate);...
+		'surfDiagfreq',mit.inputdata.DIAG{1}.N(1).frequency./24/60/60,' d';...
+		'dynDiagfreq',mit.inputdata.DIAG{1}.N(2).frequency./24/60/60,' d';...
+		'SHICE_fwFluxtavefrq',mit.inputdata.DIAG{1}.N(3).frequency./24/60/60,' d'};
+	formatstr='% 30s = %0.1f%s\n';
+	for i=1:size(parm,1)
+		fprintf(formatstr,parm{i,:});
+	end
 
+	
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% write all of the input data files
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1250,16 +1203,6 @@ if perform(org,'RuntimeOptions') % {{{
 		mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '''']; % Nx by Nz matrix of pot. temp. at Western OB
 		mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '''']; % Nx by Nz matrix of salin. at Western OB
 
-
-	%	% DEBUG
-	%	mit.inputdata.OBCS{1}.OBSvFile=['''' mit.fname.vvelOBSfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of v velocity at Southern OB
-	%	mit.inputdata.OBCS{1}.OBStFile=['''' mit.fname.thetaOBSfile mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of pot. temp. at Southern OB
-	%	mit.inputdata.OBCS{1}.OBSsFile=['''' mit.fname.saltOBSfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of salin. at Southern OB
-	%	% Left boundary
-	%	mit.inputdata.OBCS{1}.OBWuFile=['''' mit.fname.uvelOBWfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of u velocity at Western OB
-	%	mit.inputdata.OBCS{1}.OBWtFile=['''' mit.fname.thetaOBWfile mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of pot. temp. at Western OB
-	%	mit.inputdata.OBCS{1}.OBWsFile=['''' mit.fname.saltOBWfile  mit.forcing.exp{i} '_2010''']; % Nx by Nz matrix of salin. at Western OB
-	
 		fname = [mit.fname.dataobcsfile mit.forcing.exp{i}];
 		write_datafile(fname, mit.inputdata.OBCS, 'OBCS RUNTIME PARAMETERS');
 	end
@@ -1278,15 +1221,17 @@ if perform(org,'RuntimeOptions') % {{{
 			mkdir(subdir);
 		end
 		% rename previous run directory and create new one
-      if exist(fullfile(subdir,'run.old'))
-          system(['\rm -rf ' fullfile(subdir,'run.old')]);
+		dirname='runocean';
+		rundir=fullfile(subdir,dirname);
+		oldrundir=fullfile(subdir,[dirname '.old']);
+      if exist(oldrundir)
+          system(['\rm -rf ' oldrundir]);
       end
-      if exist(fullfile(subdir,'run'))
-         system(['\mv ' fullfile(subdir,'run') ' ' fullfile(subdir,'run.old')]);
+      if exist(rundir)
+         system(['\mv ' rundir ' ' oldrundir]);
       end
 		% make the run directory in subdir
-      mkdir(fullfile(subdir,'run'));
-		rundir=fullfile(subdir,'run');
+      mkdir(rundir);
 
 		disp(['    linking files to ' rundir])
 
@@ -1294,7 +1239,7 @@ if perform(org,'RuntimeOptions') % {{{
 		% Link to run directory
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% make links to input files
-		S = dir(fullfile(expdir,'input/*'));
+		S = dir(fullfile(initdir,'input/*'));
 		for j=1:length(S)
 			if ~S(j).isdir
 				if contains(S(j).name,'data.obcs')
@@ -1332,7 +1277,7 @@ if perform(org,'RuntimeOptions') % {{{
          end
       end
 		% make link to mitgcmuv executable
-		file_path = fullfile(expdir,'build/mitgcmuv'); % file location
+		file_path = fullfile(initdir,'build/mitgcmuv'); % file location
 		link_path = rundir; % link location
 		command = ['ln -s ' file_path ' ' link_path];
 		system(command);
@@ -1340,10 +1285,141 @@ if perform(org,'RuntimeOptions') % {{{
 
 	savedata(org,mit);
 end % }}}
-if perform(org,'RunMITgcmInit') % {{{
-	mit=load(org,'RuntimeOptions');
-	rundir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run';
-	cd(rundir);
+if perform(org,'RunOcean') % {{{
+	mit=load(org,'RuntimeOptionsOcean');
+
+	% set run parameters for PBS queue file
+	rundir = fullfile(expdir,'runocean'); % which experiment directory to run
+	%rundir = '/nobackupp18/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/test/run';
+	grouplist = 's2950'; % account on Pleiades
+	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
+	queuename = 'long'; % which queue to submit to (long or devel)
+	walltime = duration(120,0,0); % walltime to request
+	% write the .queue file
+	fname = write_queuefile(rundir,grouplist,npMIT,'queuename',queuename,'walltime',walltime,'iscoupled',0); % returns the name of the .queue file
+	%fname = write_queuefile(rundir,grouplist,1,'HelloWorld'); % returns the name of the .queue file
+	fprintf('Submitting queue file:   ')
+	command=['qsub ' fullfile(rundir,fname)];
+	system(command);
+end % }}}
+if perform(org,'RuntimeOptionsCoupled') % {{{
+	mit=load(org,'RuntimeOptionsOcean');
+
+	% TIME STEPPING
+	disp(' - Setting timestepping options');
+	% adjust coupling time step parameters
+	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
+	mit.coupling.nsteps = 3; % number of coupled time steps to take
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% input/data Time stepping parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Run Start and Duration
+	starttime=3.*mit.coupling.y2s; % elapsed time since spinup (s)
+   mit.inputdata.PARM{3}.nIter0=starttime./mit.inputdata.PARM{3}.deltaT;        % starting timestep iteration number
+   mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
+   mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
+   % Restart/Pickup Files
+   mit.inputdata.PARM{3}.pChkptFreq=0;            % permanent pickup checkpoint file write interval (s)
+   mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+   % Frequency/Amount of Output
+   mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
+
+	% print settings
+	disp(['    coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
+	disp(['             nsteps = ' num2str(mit.coupling.nsteps) ' s']);
+	disp(['             deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
+	disp(['      cal_startdate = ' cal_startdate]);
+
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% write all of the input data files
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(' - Writing runtime options to input/');
+	write_datafile(mit.fname.eedatafile,       mit.inputdata.EEP,      'EXECUTION ENVIRONMENT PARAMETERS');
+	write_datafile(mit.fname.datafile,         mit.inputdata.PARM,     'MODEL PARAMETERS');
+	write_datafile(mit.fname.datapkgfile,      mit.inputdata.PKG,      'PACKAGES');
+	write_datafile(mit.fname.datashelficefile, mit.inputdata.SHELFICE, 'SHELFICE RUNTIME PARAMETERS');
+	write_datafile(mit.fname.datacalfile,      mit.inputdata.CAL,      'CALENDAR PARAMETERS');
+	write_datafile(mit.fname.dataexffile,      mit.inputdata.EXF,      'EXTERNAL FORCINGS PARAMETERS');
+	write_datafile(mit.fname.datadiagfile,     mit.inputdata.DIAG,     'DIAGNOSTICS RUNTIME PARAMETERS');
+
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Diverge run directories for each experiment
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(' - Diverging models for climate experiments');
+   for i = 1:length(mit.forcing.exp)
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Directory management
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% make this experiment subdirectory if needed
+		subdir=fullfile(proph_dir,'experiments',mit.forcing.exp{i});
+		if ~exist(subdir)
+			mkdir(subdir);
+		end
+		% rename previous run directory and create new one
+      if exist(fullfile(subdir,'run.old'))
+          system(['\rm -rf ' fullfile(subdir,'run.old')]);
+      end
+      if exist(fullfile(subdir,'run'))
+         system(['\mv ' fullfile(subdir,'run') ' ' fullfile(subdir,'run.old')]);
+      end
+		% make the run directory in subdir
+      mkdir(fullfile(subdir,'run'));
+		rundir=fullfile(subdir,'run');
+
+		disp(['    linking files to ' rundir])
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Link to run directory
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% make links to input files
+		S = dir(fullfile(initdir,'input/*'));
+		for j=1:length(S)
+			if ~S(j).isdir
+				if contains(S(j).name,'data.obcs')
+					if contains(S(j).name,mit.forcing.exp{i})
+						% only link data.obcs for the experiment we are running
+						file_path = fullfile(S(j).folder, S(j).name); % file location
+						link_path = fullfile(rundir,'data.obcs'); % link location
+						command = ['ln -s ' file_path ' ' link_path];
+						system(command);
+					end
+				else
+					file_path = fullfile(S(j).folder, S(j).name); % file location
+					link_path = rundir; % link location
+					command = ['ln -s ' file_path ' ' link_path];
+					system(command);
+				end
+			end
+		end
+		% make links to forcing files
+		S = dir(mit.forcing.Ddir);
+		for j=1:length(S)
+         if ~S(j).isdir & contains(S(j).name,mit.forcing.exp{i})
+               file_path = fullfile(S(j).folder, S(j).name); % file location
+               link_path = rundir; % link location
+               command = ['ln -s ' file_path ' ' link_path];
+               system(command);
+					if contains(S(j).name,num2str(mit.forcing.startdate.Year))
+						file_path = fullfile(S(j).folder, S(j).name); % file location
+						splstr = strsplit(S(j).name,'_'); % split the filename base and the year
+						yr = num2str(mit.forcing.startdate.Year-1); % link to previous year
+						link_path = fullfile(rundir,[splstr{1} '_' yr]); % link location from yr0-1 to yr0
+						command = ['ln -s ' file_path ' ' link_path];
+						system(command);
+					end
+         end
+      end
+		% make link to mitgcmuv executable
+		file_path = fullfile(initdir,'build/mitgcmuv'); % file location
+		link_path = rundir; % link location
+		command = ['ln -s ' file_path ' ' link_path];
+		system(command);
+	end
+
+	savedata(org,mit);
+end % }}}
+if perform(org,'RunCoupled') % {{{
 	% loop through each coupled step, run the models, save the ouput
 	disp('*  - begin coupled model')
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
@@ -1378,20 +1454,226 @@ disp(['Moving to root directory: ', proph_dir]);
 cd(proph_dir);
 
 return
-hFacS=binread('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run/hFacS.data',4,250,420,69);
-hFacW=binread('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/run/hFacW.data',4,250,420,69);
-hFacS=permute(hFacS,[2,1,3]);
-hFacW=permute(hFacW,[2,1,3]);
-OBS = squeeze(hFacS(2,:,:))'; 
-OBW = squeeze(hFacW(:,2,:))'; 
-OBS = OBS>0;
-OBW = OBW>0;
-
- A=rdmds('experiments/Paris2C/run/pickup.ckptA');
- imagesc(A(:,:,1)')
- set(gca,'ydir','normal');axis equal tight;
-
 % local functions 
+function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
+%WRITE_QUEUEFILE generates a .queue file to launch an MITgcm or coupled MITgcmXISSM model
+% run on Pleiades using PBS
+% 
+% EXAMPLES:
+%    fname = write_queuefile(rundir,grouplist,ncpus); % configures using defaults (uncoupled, devel queue, etc)
+%    fname = write_queuefile(rundir,grouplist,ncpus,varargin); % configures using specified options
+%    fname = write_queuefile(rundir,grouplist,1,'HelloWorld'); % configures a minimal working example of a queue file for testing
+%    fname = write_queuefile(rundir,grouplist,ncpus,'queuename','long','walltime',duration(1,0,0),'iscoupled',0);
+%
+% INPUT:
+%    rundir     string  - the full path of the MITgcm directory to run in
+%    grouplist  string  - the acct grouplist for Pleiades to charge to
+%    ncpus      numeric - number of cpus to request 
+%    varargin:
+%        queuename    string   - the name of the queue ('low','normal','long','debug','devel')
+%        walltime     duration - the walltime requested (HH:MM:SS)
+%        iscoupled    [0,1]    - 0: only MITgcm, 1: MITgcm and ISSM
+%        mccdir       dir      - directory path where mcc files for coupled run are compiled
+% OUTPUT:
+%    fname      string  - filename of the .queue file which is written to rundir
+% SUBFUNCTIONS:
+%    resourcestring=buildresourcestring(ncpus,nodemodel)    returns a PBS resource string based on requested number of cpus
+%    INPUT:
+%       ncpus       numeric  - input from WRITE_QUEUEFILE
+%       nodemodel   string   - defines # cpus per node ('bro' is only nodemodel supported currently)
+%    OUTPUT:
+%       resourcestring  string - formatted for PBS defining number of nodes and how many cpus per node
+	
+	% parse input
+	% create inputParser object
+	p = inputParser;
+	% add inputs to the scheme
+	defaultQueue='devel';
+	validQueue={'low','normal','long','debug','devel'}; % see https://www.nas.nasa.gov/hecc/support/kb/pbs-job-queue-structure_187.html
+	defaultWalltime=[duration(0,30,0),duration(1,0,0),duration(1,0,0),duration(0,30,0),duration(0,20,0)]; % based on queue chosen
+	maxWalltime=[duration(4,0,0),duration(8,0,0),duration(120,0,0),duration(2,0,0),duration(2,0,0)]; % based on queue chosen
+	checkQueue=@(x) any(validatestring(x,validQueue));
+
+	checkIsbinary=@(x) any(x==[0,1]);
+	checkIsnatural=@(x) (x>0 & mod(x,1)==0);
+	checkMccdir=@(x) (isempty(x) | isdir(x));
+	checkIsHelloWorld=@(x) (isempty(x) | strcmp(x,'HelloWorld'));
+
+	addRequired(p,'rundir',@isdir);
+	addRequired(p,'grouplist',@ischar);
+	addRequired(p,'ncpus',checkIsnatural);
+	addOptional(p,'HelloWorld',0,checkIsHelloWorld);
+	addParameter(p,'queuename',defaultQueue,checkQueue);
+	addParameter(p,'walltime',[],@isduration);
+	addParameter(p,'iscoupled',0,checkIsbinary);
+	addParameter(p,'mccdir',[],checkMccdir);
+
+	% parse the inputs and save locally
+	parse(p,rundir,grouplist,ncpus,varargin{:})
+	rundir    =p.Results.rundir;
+	grouplist =p.Results.grouplist;
+	ncpus     =p.Results.ncpus;
+	queuename =p.Results.queuename;
+	walltime  =p.Results.walltime;
+	iscoupled =p.Results.iscoupled;
+	mccdir    =p.Results.mccdir;
+	if strcmp(p.Results.HelloWorld,'HelloWorld')
+		ishelloworld=1;
+		rundir    =p.Results.rundir;
+		grouplist =p.Results.grouplist;
+		ncpus     =p.Results.ncpus;
+		queuename =p.Results.queuename;
+		walltime  =[];
+		iscoupled =0;
+		mccdir    =[];
+	else
+		ishelloworld=0;
+	end
+	clear p;
+
+	% deal with walltime
+	if isempty(walltime)
+		walltime=defaultWalltime(strcmp(queuename,validQueue));
+	end
+	if walltime<=0 | walltime>maxWalltime(strcmp(queuename,validQueue))
+		error(['Walltime ' char(walltime) ' is not valid for ' queuename ' queue!']);
+	end
+
+	% deal with mccdir
+	if iscoupled & isempty(mccdir)
+		error('Coupled scheme requires mccdir to be defined!');
+	elseif ~iscoupled & isdir(mccdir)
+		error('mccdir is defined for a non-coupled scheme!');
+	end
+
+	%set .queue filename
+	pathparts=strsplit(rundir,'/'); % split directory name
+	prefix=pathparts{end-1}; % experiment prefix
+	if ishelloworld
+      prefix='HelloWorld';
+      fname=[prefix '.queue']; % filename for hellow world file
+	elseif iscoupled
+		fname=[prefix '_runcoupled.queue']; % filename for coupled queue file
+	else
+		fname=[prefix '_runocean.queue']; % filename for uncoupled queue file
+	end
+	% build string for resource allocation
+	resourcestring=buildresourcestring(ncpus,'bro');
+	% set ouput and err files
+	outlogfname = ['run' prefix '.outlog'];
+   errlogfname = ['run' prefix '.errlog'];
+	% set the modules we need
+	modules = {'mpi-hpe/mpt','comp-intel','hdf5/1.8.18_mpt hdf4/4.2.12 netcdf/4.4.1.1_mpt'};
+	if iscoupled
+		modules = {modules{:},'matlab/2022b','petsc/3.17.3_intel_mpt_py'};
+   end
+	modulelines = strcat({'module load '},modules);
+
+	% print the inputs
+	disp(['Preparing queue file:']);
+	disp(['  rundir:    ' rundir]);
+	disp(['  grouplist: ' grouplist]);
+	disp(['  ncpus:     ' num2str(ncpus)]);
+	disp(['  queuename: ' queuename]);
+	disp(['  walltime:  ' char(walltime)]);
+	disp(['  iscoupled: ' num2str(iscoupled)]);
+	if ishelloworld
+      disp(['  ishelloworld: ' num2str(ishelloworld)]);
+   else
+		disp(['  iscoupled: ' num2str(iscoupled)]);
+	end
+	if iscoupled
+		disp(['  mccdir:    ' mccdir]);
+	end
+	disp(['  fname:     ' fname]);
+	disp(['  resources: ' resourcestring]);
+	
+	%write the .queue file 
+	disp(['Writing .queue file ' fname]);
+	lines =	{...
+		'#PBS -S /bin/bash', ...
+		['#PBS -l ' resourcestring], ...
+		['#PBS -q ' queuename], ...
+		['#PBS -l walltime=' char(walltime)], ...
+		'#PBS -m e', ...
+		['#PBS -W group_list=' grouplist], ...
+		['#PBS -o ' fullfile(rundir,outlogfname)], ...
+		['#PBS -e ' fullfile(rundir,errlogfname)], ...
+		'', ...
+		'. /usr/share/modules/init/bash', ...
+		'', ...
+		'#load modules', ...
+		modulelines{:}, ...
+		'',...
+		'#Export some variables', ...
+		['export PATH=''' getenv("PATH") ':.'''], ...
+		'export MPI_LAUNCH_TIMEOUT=800', ...
+		'export MPI_GROUP_MAX=800'};
+	if ishelloworld
+      lines = [lines {...
+         '',...
+         ['cd ' rundir], ...
+         '',...
+         'echo "Hello, World"'}];
+   elseif iscoupled
+		lines = [lines {...
+			'',...
+			'#ISSM stuff', ...
+			'export ISSM_DIR="/nobackup/bgetraer/trunk-jpl"', ...
+			['source /nobackup/bgetraer/trunk-jpl/etc/environment.sh'], ...
+			'#move to the run directory, link the MCC files', ...
+			['cd ' rundir], ...
+			['ln -s ' fullfile(mccdir,'run_MCCexecutable.sh') ' ./'], ...
+			['ln -s ' fullfile(mccdir,'MCCexecutable') ' ./'], ...
+			'', ...
+			''}];
+		error('add launch command for coupled run!');
+	else
+		lines = [lines {...
+         '', ...
+			['cd ' rundir], ...
+			'', ...
+			'#run the MITgcm executable with MPI', ...
+			'mpirun -np $NCPUS ./mitgcmuv > out 2> err'}];
+	end
+	fid=fopen(fullfile(rundir,fname),'w+');
+	fprintf(fid,'%s\n',lines{:});
+	fclose(fid);
+	function resourcestring=buildresourcestring(ncpus,nodemodel) % {{{
+		% determine how many cpus to use per node
+		switch nodemodel
+			case 'bro' % broadwell node
+				cpupernode = 28;
+			otherwise 
+				error(['nodemodel ' nodemodel ' is not supported by this queue script yet.']);
+		end
+		% divide number of processes into whole nodes and partial node
+		wholenodes=floor(ncpus/cpupernode);
+		partialnodecpus=rem(ncpus,cpupernode);
+		% build the string for PBS script
+		% make the string for the partial nodes
+		partialnode_string='';
+		if partialnodecpus>0
+			partialnode_string=['1:ncpus=' num2str(partialnodecpus) ':model=' nodemodel];
+			% add plus sign if needed
+			if wholenodes>0
+				partialnode_string=[partialnode_string '+'];
+			end
+		end
+		% make the string for the whole nodes
+		wholenode_string='';
+		if wholenodes>0
+			wholenode_string=[num2str(wholenodes) ':ncpus=' num2str(cpupernode) ':model=' nodemodel];
+		end
+		% assemble the resource allocation string
+		resourcestring=['select=' partialnode_string wholenode_string];
+	end
+	% }}}
+end % }}}
+function launchjob(launchfile, rundir, queuename, nprocs) % {{{
+	command = ['bash ' launchfile ' ' rundir ' ' queuename ' ' num2str(nprocs)]; % launch command
+	system(command);
+end % }}}
 function write_sizefile(fname,SZ) % {{{
 	% Reads from SZ.reffile and writes to fname
 	% INPUT
