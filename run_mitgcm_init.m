@@ -9,9 +9,9 @@
 %   'Paris2C' % ensemble average forcings from Paris 2
 %   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
-steps=[7];
+steps=[8];
 
-experiment.name='RCP85';
+experiment.name='Paris2C';
 experiment.init='MITgcm_initialization';
 % directory structure {{{
 mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
@@ -1113,41 +1113,41 @@ if perform(org,'RuntimeOptionsOcean') % {{{
 	% input/data Time stepping parameters
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Run Start and Duration
-   mit.inputdata.PARM{3}.nIter0=0;        % starting timestep iteration number
-   mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
-   mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.spinupduration/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
-   % Restart/Pickup Files
-   mit.inputdata.PARM{3}.pChkptFreq=0;								% permanent pickup checkpoint file write interval (s)
-   mit.inputdata.PARM{3}.ChkptFreq=mit.timestepping.y2s/24; % temporary pickup checkpoint file write interval - twice per model month (s)
-   % Frequency/Amount of Output
-   mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.y2s/24; % interval to write monitor output - twice per model month (s)
+	mit.inputdata.PARM{3}.nIter0=0;        % starting timestep iteration number
+	mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
+	mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.spinupduration/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
+	% Restart/Pickup Files
+	mit.inputdata.PARM{3}.pChkptFreq=0;								% permanent pickup checkpoint file write interval (s)
+	mit.inputdata.PARM{3}.ChkptFreq=mit.timestepping.y2s/24; % temporary pickup checkpoint file write interval - twice per model month (s)
+	% Frequency/Amount of Output
+	mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.y2s/24; % interval to write monitor output - twice per model month (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.obcs Sponge layer parameters
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% input/data.obcs Sponge layer parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	mit.inputdata.OBCS{3}.Vrelaxobcsbound=1*(24*60*60); % relaxation time scale at the outermost sponge layer point of a zonal OB (s)
 	mit.inputdata.OBCS{3}.Urelaxobcsbound=1*(24*60*60); % relaxation time scale at the outermost sponge layer point of a meridional OB (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.cal Calendar parameters
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% input/data.cal Calendar parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	cal_startdate=mit.forcing.startdate;
 	%cal_startdate.Year=cal_startdate.Year+1;
 	mit.inputdata.CAL{1}.startdate_1=string(cal_startdate,'yyyyMMdd'); % yyyyMMdd of start date
 	mit.inputdata.CAL{1}.startDate_2=string(cal_startdate,'HHmmss');   % HHmmss of start date
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.exf External forcing parameters
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	
+	% input/data.exf External forcing parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 	mit.inputdata.EXF{end}.obcsWstartdate1 = string(mit.forcing.startdate,'yyyyMMdd'); % W boundary start year (YYYY), month (MM), day (DD) to determine record number
-   mit.inputdata.EXF{end}.obcsWperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
-   mit.inputdata.EXF{end}.obcsSstartdate1 = string(mit.forcing.startdate,'yyyyMMdd'); % S boundary start year (YYYY), month (MM), day (DD) to determine record number
-   mit.inputdata.EXF{end}.obcsSperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	mit.inputdata.EXF{end}.obcsWperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
+	mit.inputdata.EXF{end}.obcsSstartdate1 = string(mit.forcing.startdate,'yyyyMMdd'); % S boundary start year (YYYY), month (MM), day (DD) to determine record number
+	mit.inputdata.EXF{end}.obcsSperiod     = -1.0;     % interval between two records: the special value -1 means non-repeating (calendar) monthly records
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.diagnostics Diagnostic output parameters
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% input/data.diagnostics Diagnostic output parameters
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Output Stream 1: surfDiag (snapshot every month)
 	mit.inputdata.DIAG{1}.N(1).filename  = '''surfDiag''';
 	mit.inputdata.DIAG{1}.N(1).frequency = -mit.timestepping.y2s/12; % (s)
@@ -1177,10 +1177,10 @@ if perform(org,'RuntimeOptionsOcean') % {{{
 		fprintf(formatstr,parm{i,:});
 	end
 
-	
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% write all of the input data files
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	disp(' - Writing runtime options to input/');
 	write_datafile(mit.fname.eedatafile,       mit.inputdata.EEP,      'EXECUTION ENVIRONMENT PARAMETERS');
 	write_datafile(mit.fname.datafile,         mit.inputdata.PARM,     'MODEL PARAMETERS');
@@ -1207,65 +1207,80 @@ if perform(org,'RuntimeOptionsOcean') % {{{
 		write_datafile(fname, mit.inputdata.OBCS, 'OBCS RUNTIME PARAMETERS');
 	end
 
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Diverge run directories for each experiment
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(' - Diverging models for climate experiments');
-   for i = 1:length(mit.forcing.exp)
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% Directory management
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% make this experiment subdirectory if needed
-		subdir=fullfile(proph_dir,'experiments',mit.forcing.exp{i});
-		if ~exist(subdir)
-			mkdir(subdir);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	prompt = 'Reset runocean directories now? (''y'' or ''Y'' to proceed, ''n'' or ''N'' to skip)\n';
+	txt=0;
+	while txt==0;
+		txt = input(prompt,'s');
+		switch txt
+			case {'y','Y'}
+				cont = 1;
+			case {'n','N'}
+				cont = 0;
+			otherwise
+				txt=0;
 		end
-		% rename previous run directory and create new one
-		dirname='runocean';
-		rundir=fullfile(subdir,dirname);
-		oldrundir=fullfile(subdir,[dirname '.old']);
-      if exist(oldrundir)
-          system(['\rm -rf ' oldrundir]);
-      end
-      if exist(rundir)
-         system(['\mv ' rundir ' ' oldrundir]);
-      end
-		% make the run directory in subdir
-      mkdir(rundir);
+	end
 
-		disp(['    linking files to ' rundir])
+	if cont
+		disp(' - Diverging models for climate experiments');
+		for i = 1:length(mit.forcing.exp)
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% Directory management
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% make this experiment subdirectory if needed
+			subdir=fullfile(proph_dir,'experiments',mit.forcing.exp{i});
+			if ~exist(subdir)
+				mkdir(subdir);
+			end
+			% rename previous run directory and create new one
+			dirname='runocean';
+			rundir=fullfile(subdir,dirname);
+			oldrundir=fullfile(subdir,[dirname '.old']);
+			if exist(oldrundir)
+				system(['\rm -rf ' oldrundir]);
+			end
+			if exist(rundir)
+				system(['\mv ' rundir ' ' oldrundir]);
+			end
+			% make the run directory in subdir
+			mkdir(rundir);
 
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% Link to run directory
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% make links to input files
-		S = dir(fullfile(initdir,'input/*'));
-		for j=1:length(S)
-			if ~S(j).isdir
-				if contains(S(j).name,'data.obcs')
-					if contains(S(j).name,mit.forcing.exp{i})
-						% only link data.obcs for the experiment we are running
+			disp(['    linking files to ' rundir])
+
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% Link to run directory
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% make links to input files
+			S = dir(fullfile(initdir,'input/*'));
+			for j=1:length(S)
+				if ~S(j).isdir
+					if contains(S(j).name,'data.obcs')
+						if contains(S(j).name,mit.forcing.exp{i})
+							% only link data.obcs for the experiment we are running
+							file_path = fullfile(S(j).folder, S(j).name); % file location
+							link_path = fullfile(rundir,'data.obcs'); % link location
+							command = ['ln -s ' file_path ' ' link_path];
+							system(command);
+						end
+					else
 						file_path = fullfile(S(j).folder, S(j).name); % file location
-						link_path = fullfile(rundir,'data.obcs'); % link location
+						link_path = rundir; % link location
 						command = ['ln -s ' file_path ' ' link_path];
 						system(command);
 					end
-				else
+				end
+			end
+			% make links to forcing files
+			S = dir(mit.forcing.Ddir);
+			for j=1:length(S)
+				if ~S(j).isdir & contains(S(j).name,mit.forcing.exp{i})
 					file_path = fullfile(S(j).folder, S(j).name); % file location
 					link_path = rundir; % link location
 					command = ['ln -s ' file_path ' ' link_path];
 					system(command);
-				end
-			end
-		end
-		% make links to forcing files
-		S = dir(mit.forcing.Ddir);
-		for j=1:length(S)
-         if ~S(j).isdir & contains(S(j).name,mit.forcing.exp{i})
-               file_path = fullfile(S(j).folder, S(j).name); % file location
-               link_path = rundir; % link location
-               command = ['ln -s ' file_path ' ' link_path];
-               system(command);
 					if contains(S(j).name,num2str(mit.forcing.startdate.Year))
 						file_path = fullfile(S(j).folder, S(j).name); % file location
 						splstr = strsplit(S(j).name,'_'); % split the filename base and the year
@@ -1274,13 +1289,16 @@ if perform(org,'RuntimeOptionsOcean') % {{{
 						command = ['ln -s ' file_path ' ' link_path];
 						system(command);
 					end
-         end
-      end
-		% make link to mitgcmuv executable
-		file_path = fullfile(initdir,'build/mitgcmuv'); % file location
-		link_path = rundir; % link location
-		command = ['ln -s ' file_path ' ' link_path];
-		system(command);
+				end
+			end
+			% make link to mitgcmuv executable
+			file_path = fullfile(initdir,'build/mitgcmuv'); % file location
+			link_path = rundir; % link location
+			command = ['ln -s ' file_path ' ' link_path];
+			system(command);
+		end
+	else
+		disp('Skipping reset of runocean directories!');
 	end
 
 	savedata(org,mit);
@@ -1309,113 +1327,87 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	disp(' - Setting timestepping options');
 	% adjust coupling time step parameters
 	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
-	mit.coupling.nsteps = 3; % number of coupled time steps to take
+	mit.timestepping.nsteps = 3; % number of coupled time steps to take
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% input/data Time stepping parameters
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Run Start and Duration
-	starttime=3.*mit.coupling.y2s; % elapsed time since spinup (s)
+	starttime=mit.timestepping.spinupduration; % elapsed time since spinup (s)
    mit.inputdata.PARM{3}.nIter0=starttime./mit.inputdata.PARM{3}.deltaT;        % starting timestep iteration number
-   mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
-   mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
+   mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
    % Restart/Pickup Files
    mit.inputdata.PARM{3}.pChkptFreq=0;            % permanent pickup checkpoint file write interval (s)
-   mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+   mit.inputdata.PARM{3}.ChkptFreq=mit.timestepping.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
    % Frequency/Amount of Output
-   mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
+   mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
 
 	% print settings
-	disp(['    coupledTimeStep = ' num2str(mit.coupling.coupledTimeStep) ' s']);
-	disp(['             nsteps = ' num2str(mit.coupling.nsteps) ' s']);
-	disp(['             deltaT = ' num2str(mit.inputdata.PARM{3}.deltaT) ' s']);
-	disp(['      cal_startdate = ' cal_startdate]);
-
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% write all of the input data files
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(' - Writing runtime options to input/');
-	write_datafile(mit.fname.eedatafile,       mit.inputdata.EEP,      'EXECUTION ENVIRONMENT PARAMETERS');
-	write_datafile(mit.fname.datafile,         mit.inputdata.PARM,     'MODEL PARAMETERS');
-	write_datafile(mit.fname.datapkgfile,      mit.inputdata.PKG,      'PACKAGES');
-	write_datafile(mit.fname.datashelficefile, mit.inputdata.SHELFICE, 'SHELFICE RUNTIME PARAMETERS');
-	write_datafile(mit.fname.datacalfile,      mit.inputdata.CAL,      'CALENDAR PARAMETERS');
-	write_datafile(mit.fname.dataexffile,      mit.inputdata.EXF,      'EXTERNAL FORCINGS PARAMETERS');
-	write_datafile(mit.fname.datadiagfile,     mit.inputdata.DIAG,     'DIAGNOSTICS RUNTIME PARAMETERS');
-
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% Diverge run directories for each experiment
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	disp(' - Diverging models for climate experiments');
-   for i = 1:length(mit.forcing.exp)
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% Directory management
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% make this experiment subdirectory if needed
-		subdir=fullfile(proph_dir,'experiments',mit.forcing.exp{i});
-		if ~exist(subdir)
-			mkdir(subdir);
-		end
-		% rename previous run directory and create new one
-      if exist(fullfile(subdir,'run.old'))
-          system(['\rm -rf ' fullfile(subdir,'run.old')]);
-      end
-      if exist(fullfile(subdir,'run'))
-         system(['\mv ' fullfile(subdir,'run') ' ' fullfile(subdir,'run.old')]);
-      end
-		% make the run directory in subdir
-      mkdir(fullfile(subdir,'run'));
-		rundir=fullfile(subdir,'run');
-
-		disp(['    linking files to ' rundir])
-
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% Link to run directory
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		% make links to input files
-		S = dir(fullfile(initdir,'input/*'));
-		for j=1:length(S)
-			if ~S(j).isdir
-				if contains(S(j).name,'data.obcs')
-					if contains(S(j).name,mit.forcing.exp{i})
-						% only link data.obcs for the experiment we are running
-						file_path = fullfile(S(j).folder, S(j).name); % file location
-						link_path = fullfile(rundir,'data.obcs'); % link location
-						command = ['ln -s ' file_path ' ' link_path];
-						system(command);
-					end
-				else
-					file_path = fullfile(S(j).folder, S(j).name); % file location
-					link_path = rundir; % link location
-					command = ['ln -s ' file_path ' ' link_path];
-					system(command);
-				end
-			end
-		end
-		% make links to forcing files
-		S = dir(mit.forcing.Ddir);
-		for j=1:length(S)
-         if ~S(j).isdir & contains(S(j).name,mit.forcing.exp{i})
-               file_path = fullfile(S(j).folder, S(j).name); % file location
-               link_path = rundir; % link location
-               command = ['ln -s ' file_path ' ' link_path];
-               system(command);
-					if contains(S(j).name,num2str(mit.forcing.startdate.Year))
-						file_path = fullfile(S(j).folder, S(j).name); % file location
-						splstr = strsplit(S(j).name,'_'); % split the filename base and the year
-						yr = num2str(mit.forcing.startdate.Year-1); % link to previous year
-						link_path = fullfile(rundir,[splstr{1} '_' yr]); % link location from yr0-1 to yr0
-						command = ['ln -s ' file_path ' ' link_path];
-						system(command);
-					end
-         end
-      end
-		% make link to mitgcmuv executable
-		file_path = fullfile(initdir,'build/mitgcmuv'); % file location
-		link_path = rundir; % link location
-		command = ['ln -s ' file_path ' ' link_path];
-		system(command);
+	parm={'coupledTimeStep',mit.timestepping.coupledTimeStep./24/60/60,' d';...
+		'deltaT',mit.inputdata.PARM{3}.deltaT,' s';...
+		'ChkptFreq',mit.inputdata.PARM{3}.ChkptFreq./24/60/60,' d';...
+		'relaxobcsbound',mit.inputdata.OBCS{3}.Vrelaxobcsbound./24/60/60,' d';...
+		'nIter0',mit.inputdata.PARM{3}.nIter0,[' (' num2str(mit.inputdata.PARM{3}.nIter0./mit.timestepping.y2s.*mit.inputdata.PARM{3}.deltaT) ' y)'];...
+		'surfDiagfreq',mit.inputdata.DIAG{1}.N(1).frequency./24/60/60,' d';...
+		'dynDiagfreq',mit.inputdata.DIAG{1}.N(2).frequency./24/60/60,' d';...
+		'SHICE_fwFluxtavefrq',mit.inputdata.DIAG{1}.N(3).frequency./24/60/60,' d'};
+	formatstr='% 30s = %0.1f%s\n';
+	for i=1:size(parm,1)
+		fprintf(formatstr,parm{i,:});
 	end
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Directory management
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	builddir = fullfile(initdir,'build'); % initalization directory where model was compiled
+	inputdir=fullfile(initdir,'input'); % initialization directory for runtime input options
+	runoceandir = fullfile(expdir,'runocean'); % run directory for the ocean model spinup
+	runcoupleddir = fullfile(expdir,'runcoupled'); % run directory for the coupled model
+	% rename previous run directory and create new one
+	oldruncoupleddir=[runcoupleddir '.old'];
+	if exist(oldruncoupleddir)
+		system(['\rm -rf ' oldruncoupleddir]);
+	end
+	if exist(runcoupleddir)
+		system(['\mv ' runcoupleddir ' ' oldruncoupleddir]);
+	end
+	% make the run directory in subdir
+	mkdir(runcoupleddir);
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% Build run directory
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp(['  - Initializing coupledrun directory in ' runcoupleddir])
+	% copy files from runoceandir
+	[fname_meta,fname_data]=getpickup(runoceandir,mit.inputdata.PARM{3}.nIter0);
+	filelist={fname_meta,fname_data,'hFacC.meta','hFacC.data'};
+	cp_filelist(runoceandir,filelist,runcoupleddir); % copy all files from runoceandir to runcoupleddir
+
+	% link the input files
+	dataobcsfile=['data.obcs' experiment.name];
+	filelist={'eedata','data','data.cal','data.diagnostics','data.exf',dataobcsfile,'data.pkg','data.shelfice',...
+		'bathy.bin','delr.bin','draft.bin','sref.bin','tref.bin'};
+	ln_filelist(inputdir,filelist,runcoupleddir); % link all files from inputdir to runcoupleddir
+	% rename link to data.obcs
+	command=['mv ' fullfile(runcoupleddir,dataobcsfile) ' ' fullfile(runcoupleddir,'data.obcs')];
+	system(command);
+
+	% link mitgcmuv executable
+	filelist={'mitgcmuv'};
+	ln_filelist(builddir,filelist,runcoupleddir); % link file from builddir to runcoupleddir
+
+	% link the boundary forcing files
+	S=dir(mit.forcing.Ddir);
+	S=S(contains({S.name},experiment.name));
+	filelist={S.name};
+	ln_filelist(mit.forcing.Ddir,filelist,runcoupleddir);
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % write data file
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	datafilepath=fullfile(runcoupleddir,'data');
+   disp([' - Set runtime options in data file']);
+   write_datafile(datafilepath, mit.inputdata.PARM, 'MODEL PARAMETERS');
 
 	savedata(org,mit);
 end % }}}
@@ -1455,6 +1447,128 @@ cd(proph_dir);
 
 return
 % local functions 
+function [fname_meta,fname_data]=getpickup(parentdir,nIter0) % {{{
+%GETPICKUP finds the pickup file in the parentdir that matches the niter number
+   pickup_fnames = {'pickup.ckptA','pickup.ckptB'}; % the .meta file names
+   for i=1:numel(pickup_fnames)
+      fid=fopen(fullfile(parentdir,[pickup_fnames{i} '.meta']));
+      if fid~=-1
+         tline=fgetl(fid); % read the next line
+         while ischar(tline)
+            if contains(tline, 'timeStepNumber')
+               break;
+            end
+            tline = fgetl(fid); % read the next line
+         end
+         fclose(fid);
+         niter(i)=str2num(extractBefore(extractAfter(tline,'['),']'));
+      end
+   end
+   pickup_ind=find(niter==nIter0); % match the right pickup file
+   if isempty(pickup_ind)
+      error('No pickup file is found for nIter0!');
+   else
+      fname=pickup_fnames(pickup_ind);
+      fname_meta=[fname{:} '.meta'];
+      fname_data=[fname{:} '.data'];
+   end
+end % }}}
+function D=readmeta(parentdir,fname,varargin) % {{{
+%READMETA looks for a file of the form fname*.meta in parentdir
+% if multiple files are matched, it finds all of them.
+% The output is a cell array of structures containing the metadata
+% of each matched file
+   S=dir(fullfile(parentdir,[fname '*.meta']));
+   D=[];
+   command=''; % initialize blank command
+
+   if numel(varargin)>0
+      fields=varargin;
+      for i=1:numel(S)
+         fid=fopen(S(i).name); % open file
+         D(i).fname=S(i).name; % save filename
+         tline=fgetl(fid); % read line
+         while ischar(tline)
+            command = [command tline]; % build commmand
+            if strcmp(tline(end),';')
+               thisfield=strip(extractBefore(tline,'='));
+               if any(strcmp(thisfield,fields))
+                  command=strip(command,' '); % remove whitespace
+                  command=['D(' num2str(i) ').' command]; % save in the structure
+                  disp(command); % print
+                  eval(command); % evaluate command
+               end
+               command=''; % reset command
+            end
+            tline=fgetl(fid); % read next line
+         end
+         fclose(fid); % close file
+      end
+   else
+		fields=[];
+      for i=1:numel(S)
+         fid=fopen(S(i).name); % open file
+         D(i).fname=S(i).name; % save filename
+         tline=fgetl(fid); % read line
+         while ischar(tline)
+            command = [command tline]; % build commmand
+            if strcmp(tline(end),';')
+               command=strip(command,' '); % remove whitespace
+               command=['D(i).' command]; % save in the structure
+               disp(command); % print
+               eval(command); % evaluate command
+               command=''; % reset command
+            end
+            tline=fgetl(fid); % read next line
+         end
+         fclose(fid); % close file
+      end
+   end
+end % }}}
+function ln_filelist(parentdir,filelist,targetdir) % {{{
+% LN_FILELIST soft-links a list of files located in parentdir to targetdir
+	if ~isdir(parentdir)
+		error('parentdir must be a directory');
+	elseif any(~isfile(fullfile(parentdir,filelist)))
+		error('filelist contains files which do not exist in parentdir');
+	elseif  ~isdir(targetdir)
+		error('targetdir must be a directory');
+	end
+	% link the files
+	disp(['   linking ' num2str(numel(filelist)) ' files from ']);
+   disp(['       ' parentdir ' to']);
+   disp(['       ' targetdir]);
+   for i=1:numel(filelist)
+      file_path=fullfile(parentdir,filelist{i}); % file location
+      command = ['ln -s ' file_path ' ' targetdir];
+		if numel(filelist)<20
+			disp(['         - ' filelist{i}]);
+		elseif i==1
+			disp(['         ...']);
+		end
+			system(command);
+   end
+end	% }}}
+function cp_filelist(parentdir,filelist,targetdir) % {{{
+% CP_FILELIST copies a list of files located in parentdir to targetdir
+	if ~isdir(parentdir)
+		error('parentdir must be a directory');
+	elseif any(~isfile(fullfile(parentdir,filelist)))
+		error('filelist contains files which do not exist in parentdir');
+	elseif  ~isdir(targetdir)
+		error('targetdir must be a directory');
+	end
+	% copy the files
+	disp(['   copying ' num2str(numel(filelist)) ' files from ']);
+	disp(['       ' parentdir ' to']);
+	disp(['       ' targetdir]);
+   for i=1:numel(filelist)
+      file_path=fullfile(parentdir,filelist{i}); % file location
+      command = ['cp ' file_path ' ' targetdir];
+      disp(['         - ' filelist{i}]);
+      system(command);
+   end
+end	% }}}
 function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 %WRITE_QUEUEFILE generates a .queue file to launch an MITgcm or coupled MITgcmXISSM model
 % run on Pleiades using PBS
@@ -1634,7 +1748,7 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 			['cd ' rundir], ...
 			'', ...
 			'#run the MITgcm executable with MPI', ...
-			'mpirun -np $NCPUS ./mitgcmuv > out 2> err'}];
+			['mpirun -np ' num2str(ncpus) ' ./mitgcmuv > out 2> err']}];
 	end
 	fid=fopen(fullfile(rundir,fname),'w+');
 	fprintf(fid,'%s\n',lines{:});
@@ -1669,10 +1783,6 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 		resourcestring=['select=' partialnode_string wholenode_string];
 	end
 	% }}}
-end % }}}
-function launchjob(launchfile, rundir, queuename, nprocs) % {{{
-	command = ['bash ' launchfile ' ' rundir ' ' queuename ' ' num2str(nprocs)]; % launch command
-	system(command);
 end % }}}
 function write_sizefile(fname,SZ) % {{{
 	% Reads from SZ.reffile and writes to fname
