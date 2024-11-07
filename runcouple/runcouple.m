@@ -1,13 +1,15 @@
-function runcouple(rundir,md,mit)
+%function runcouple(rundir,md,mit)
 %RUNCOUPLE is intended as a standalone script to run a coupled ISSM-MITGCM model with MCC compilation/
 %The only input is envfile.mat, which must contain all environment variables needed for this function,
 %exported from the main runme.m. These variables are declared explicitly and named in this script as 
 %the executable needs to expect them in order to load them.
 %RUNCOUPLE loads the existing environment variables, loops through the time steps calling the models runs,
 %and saves the output. Is is assumed that you are already located within the mitgcm "run" directory. 
+dispMITxISSM();
+disp('************************************************************************************');
+disp('*   - beginning RUNCOUPLE mcc deployable');
+disp(['*   - current directory is ' pwd])
 
-
-niter=mit.inputdata.PARM{3}.nIter0;
 Nx=mit.mesh.Nx;
 Ny=mit.mesh.Ny;
 Nz=mit.mesh.Nz;
@@ -22,28 +24,30 @@ mask_ice(draft>0)=-1;
 mask_ice(draft==0)=1;
 
 hFacC_fname=fullfile(rundir,'hFacC.data'); % hFacC file
+npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy;
 
-%U,V,T,S,E
-
+md.cluster=generic('name',oshostname(),'np',npMIT); % set number of processors for ISSM. 'name' will be filled at runtime
+md_prefix = 'runcouple';
 %loop through each coupled step, run the models, save the ouput 
-% n is the number step we are on, from 0:nsteps-1
-%for n=n0:(nsteps-1);
-%	display(['STEP ' num2str(n) '/' num2str(nsteps-1)]);
-%	t=n*coupled_time_step; % current time (yr)
-%	% set when to write output to permanent files
-%	% save md every 6 months and at the end
-%	writeISSM=(any(mod(n+1,365)==[0,180]) | n==(nsteps-1));
-%	% keep pickup files once every 30 days and at the end of the year
-%	% last step is kept until next step finishes.
-%	saveMITgcm=any(mod(n,365)==[0:30:330]);
+% n is the coupled step number we are STARTING FROM, from 0:nsteps-1
+% niter is the MITgcm step number
+% to start from an advanced state, all you need to do is set the 
+% niter0 parameter to start at the niter you want.
+% Example: if n=0, we are starting the first coupled step from niter0. After running the MITgcm model, niter advances by
+% the appropriate number of MITgcm timesteps, and those results are loaded for the ice model.
+
+niter=mit.inputdata.PARM{3}.nIter0; % starting niter
+for n=0:(nsteps-1);
+	display(['COUPLED STEP ' num2str(n+1) '/' num2str(nsteps)]);
+
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Update draft
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	disp('reading ice shelf draft from ISSM');
 	% interpolate ice draft and masks from ISSM
 	newdraft = zeros(mit.mesh.Ny,mit.mesh.Nx);    % initialize matrix for ice draft depth (m)
-	newdraft(:)=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.base,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % m
-	mask_oce=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.mask.ocean_levelset,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',-1); % -1 ocean, 1 grounded
+	newdraft(:)=InterpFromMeshToGrid(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.base,mit.mesh.xc(:),mit.mesh.yc(:),0); % (def 0) (m)
+	mask_oce=InterpFromMeshToGrid(md.mesh.elements,md.mesh.x,md.mesh.y,md.mask.ocean_levelset,mit.mesh.xc(:),mit.mesh.yc(:),-1); % -1 ocean, 1 grounded (def -1)
 	newdraft(mask_oce>0)=bathy(mask_oce>0); % set all grounded ice to have a draft equal to the bathymetry (m)
 	newdraft(draft==0)=0; % set all open ocean to have zero draft (m)
 	newdraft(1,:) = mit.geometry.draftOBS; % set draft at bottom boundary (m)
@@ -59,9 +63,10 @@ hFacC_fname=fullfile(rundir,'hFacC.data'); % hFacC file
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	[~,pickup_fname]=getpickup(rundir,niter); % find the right pickup file
 	PickupData=binread(fullfile(rundir,pickup_fname),8,[Nx, Ny, 6*Nz+3]); % read the whole file
+	whos PickupData
 	T=PickupData(:,:,(1:Nz)+2*Nz); % Temperature state (deg C)
 	S=PickupData(:,:,(1:Nz)+3*Nz); % Salinity state (g/kg)
-	
+
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    %Open new cells as necessary
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -104,22 +109,75 @@ hFacC_fname=fullfile(rundir,'hFacC.data'); % hFacC file
 	%Write updated MITgcm files
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% updated pickup file
-	PickupData=binread(fullfile(rundir,fname),8,[Nx, Ny, 6*Nz+3]);
 	PickupData(:,:,(1:Nz)+2*Nz)=T;
 	PickupData(:,:,(1:Nz)+3*Nz)=S;
-	binwrite(fullfile(rundir,pickup_fname),PickupData);
+	binwrite(fullfile(rundir,pickup_fname),PickupData,8);
 	% updated draft file
-   binwrite(fullfile(rundir,mit.fname.draftfile),newdraft);
+   binwrite(fullfile(rundir,mit.fname.draftfile),newdraft,8);
 
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   %Update niter in the data file
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% the cal start time, model start time, and obcs all stay the same. the only difference is 
+	% the interation step number we pickup from.
+	newline=['  nIter0=' num2str(niter) ','];
+   command=['sed "s/.*nIter0.*/' newline '/" data > data.temp; mv data.temp data'];
+	system(command);
+	
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   %Run MITgcm
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	%system(['mpirun -np ' int2str(npMIT) ' ./mitgcmuv > out 2> err']);
+	niter=mit.inputdata.PARM{3}.nIter0 + (n+1)*mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT; % updated niter
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   %Get melt from MITgcm
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	melt_fname=sprintf('SHICE_fwFluxtave.%010i.data',niter); % melt file
+   meltq_mitgcm = binread(fullfile(rundir,melt_fname),4,[Nx, Ny]); % melt flux at cell centers (kg/m^2/s)
+	meltq_mitgcm=permute(melt_mitgcm,[2,1]);  % put in ROW COL order (kg/m^2/s)
+	meltq_issm=InterpFromGridToMesh(mit.mesh.xc(:),mit.mesh.yc(:),melt_mitgcm,md.mesh.x,md.mesh.y,0); % melt flux at vertices (kg/m^2/s)
+
+   %Set basal melting rate fields
+	md.basalforcings.floatingice_melting_rate=-meltq_issm*md.constants.yts/md.materials.rho_ice; % melt rate at element vertices (m/yr)
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   %Run ISSM
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   %Solve
+   md.miscellaneous.name = sprintf('%s%010i',md_prefix,niter);
+   md=solve(md,'transient');
+
+	%Reset model
+   md.geometry.base             = md.results.TransientSolution(end).Base;
+   md.geometry.surface          = md.results.TransientSolution(end).Surface;
+   md.geometry.thickness        = md.geometry.surface-md.geometry.base;
+   md.initialization.vx         = md.results.TransientSolution(end).Vx;
+   md.initialization.vy         = md.results.TransientSolution(end).Vy;
+   md.initialization.vel        = md.results.TransientSolution(end).Vel;
+   md.initialization.pressure   = md.results.TransientSolution(end).Pressure;
+   md.mask.ocean_levelset       = md.results.TransientSolution(end).MaskOceanLevelset;
+
+	%Save ISSM results
+   fname = sprintf('results/TransientSolution.%010i.mat', niter);
+   results = md.results.TransientSolution(end);
+	results.step = (n+1);
+	results.time = (n+1)*mit.timestepping.coupledTimeStep;
+   save(fname,'results');
+   clear md.results;
+
+	%Clear execution folder in ISSM to avoid going over quota
+	command = ['rm -r ' md.cluster.executionpath '/' md_prefix '*'];
+	system(command);
 %end
 
 
 
 % subfunctions
-function varargout=getpickup(parentdir,nIter0) % {{{
+function [fname_meta,fname_data]=getpickup(parentdir,nIter0) % {{{
 %GETPICKUP finds the pickup file in the parentdir that matches the niter number
    pickup_fnames = {'pickup.ckptA','pickup.ckptB'}; % the .meta file names
-	niter=[0,0];
+	nit=[0,0];
    for i=1:numel(pickup_fnames)
       fid=fopen(fullfile(parentdir,[pickup_fnames{i} '.meta']),'r');
       if fid~=-1
@@ -131,23 +189,16 @@ function varargout=getpickup(parentdir,nIter0) % {{{
             tline = fgetl(fid); % read the next line
          end
          fclose(fid);
-         niter(i)=str2num(extractBefore(extractAfter(tline,'['),']'));
+         nit(i)=str2num(extractBefore(extractAfter(tline,'['),']'));
 		end
    end
-   pickup_ind=find(niter==nIter0); % match the right pickup file
+   pickup_ind=find(nit==nIter0); % match the right pickup file
    if isempty(pickup_ind)
       error('No pickup file is found for nIter0!');
 	end
-      fname=pickup_fnames(pickup_ind);
-		fname_meta=[fname{:} '.meta'];
-		fname_data=[fname{:} '.data'];
-		if nargout < 2
-			varargout=fname;
-		elseif nargout ==2
-			varargout={fname_meta,fname_data};
-		else
-			error('too many output arguments');
-		end
+	fname=pickup_fnames(pickup_ind);
+	fname_meta=[fname{:} '.meta'];
+	fname_data=[fname{:} '.data'];
 end % }}}
 function D=binread(fname,prec,arrsize) % {{{
 % read data from binary file into a matlab array D.
@@ -201,4 +252,4 @@ function dispMITxISSM() % {{{
    disp('                        __/ |                ')
    disp('                       |___/                 ')
 end % }}}
-end
+%end

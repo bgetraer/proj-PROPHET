@@ -42,7 +42,7 @@ end
 % }}}
 
 org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps);
-if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{ 
+if perform(org,'MeshParam'),   % {{{ 
 	md=model(); % initialize ISSM model structure
 	% Exp/amundsenicedomain.exp {{{
 	EXP=struct; % initialize domain exp structure
@@ -183,9 +183,6 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	% Surface Mass Balance from RACMO
    md.smb.mass_balance = interpRACMOant(md.mesh.x,md.mesh.y); % interpolate accumulation rate data from RACMO (SMB_RACMO2.3_1979_2011.nc) (m/yr ice equivalence)
 
-	% Geothermal heat flux
-   md.basalforcings.geothermalflux  = interpSeaRISE(md.mesh.x,md.mesh.y,'bheatflx_shapiro',-1); % intperolate geothermal flux from Shapiro et al. (W/m^2)
-
 	% Boundary Conditions
 	% reset b.c. on the vertices
    md.stressbalance.spcvx        = NaN(md.mesh.numberofvertices,1);
@@ -206,7 +203,7 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	% }}}
 	savemodel(org,md);
 end%}}}
-if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
+if perform(org,'InversionB'),  % {{{
    md=loadmodel(org,'MeshParam');
 
    % new inversion with M1QN3 package
@@ -270,7 +267,7 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
    savemodel(org,md);
 end % }}}
-if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
+if perform(org,'InversionC'),  % {{{
    md=loadmodel(org,'InversionB');
 
 	% new inversion with M1QN3 package
@@ -341,6 +338,31 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
 
    savemodel(org,md);
 end%}}}
+if perform(org,'TransientPrep'), % {{{
+	md=loadmodel(org,'InversionC');
+
+   %Set parameters
+   md.inversion.iscontrol=0;
+   md.transient.ismovingfront=0;
+   md.transient.isthermal=0;
+   md.transient.isstressbalance=1;
+   md.transient.ismasstransport=1;
+   md.transient.isgroundingline=1;
+   md.groundingline.migration = 'SubelementMigration';
+   md.settings.output_frequency = 1;
+   md.timestepping=timesteppingadaptive();
+   md.timestepping.time_step_max=0.05;
+   md.timestepping.time_step_min=0.0005;
+   md.timestepping.start_time=0;
+   md.timestepping.final_time=15/365;
+
+	%Basal melt rate
+	md.basalforcings = basalforcings();
+   md.basalforcings.groundedice_melting_rate=zeros(md.mesh.numberofvertices,1); % no melting on grounded ice
+
+   %Same as for the drag inversion
+   md.transient.requested_outputs={'default','IceVolume','IceVolumeAboveFloatation','BasalforcingsFloatingiceMeltingRate','Thickness','MaskOceanLevelset'};
+end % }}}
 if perform(org,'PlotInversion'),  % Examine the results of the inversion {{{
    md=loadmodel(org,'InversionC');
 
