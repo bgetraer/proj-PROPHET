@@ -9,7 +9,7 @@
 %   'Paris2C' % ensemble average forcings from Paris 2
 %   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
-steps=[8];
+steps=[8:9];
 
 experiment.name='Paris2C';
 experiment.init='MITgcm_initialization';
@@ -1328,6 +1328,11 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	% adjust coupling time step parameters
 	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
 	mit.timestepping.nsteps = 3; % number of coupled time steps to take
+%	%% DEBUG!!
+%	warning('running with debug coupled timestep');
+%	pause();
+%	mit.timestepping.coupledTimeStep=5*100;
+%	mit.inputdata.DIAG{1}.N(3).frequency=mit.timestepping.coupledTimeStep;
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% input/data Time stepping parameters
@@ -1339,6 +1344,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
    % Restart/Pickup Files
    mit.inputdata.PARM{3}.pChkptFreq=0;            % permanent pickup checkpoint file write interval (s)
    mit.inputdata.PARM{3}.ChkptFreq=mit.timestepping.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+	mit.inputdata.PARM{3}.pickupSuff=''; % placeholder to be filled during each step
    % Frequency/Amount of Output
    mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
 
@@ -1409,36 +1415,32 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
    disp([' - Set runtime options in data file']);
    write_datafile(datafilepath, mit.inputdata.PARM, 'MODEL PARAMETERS');
 
+	datafilepath=fullfile(runcoupleddir,'data.diagnostics');
+   disp([' - Set runtime options in data.diagnostics file']);
+	write_datafile(datafilepath, mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
+
 	savedata(org,mit);
 end % }}}
 if perform(org,'RunCoupled') % {{{
-	% loop through each coupled step, run the models, save the ouput
-	disp('*  - begin coupled model')
+	mit=load(org,'RuntimeOptionsCoupled');
+
+	% set run parameters for PBS queue file
+	rundir = fullfile(expdir,'runcoupled'); % which experiment directory to run
+	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
+	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	mitfile = fullfile(org.repository,[org.prefix,'RuntimeOptionsCoupled.mat']);
+	grouplist = 's2950'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
-	% BEGIN THE LOOP
-	%  n is the number step we are on, from 0:nsteps-1
-	for n=0:(mit.coupling.nsteps-1);
-		display(['STEP ' num2str(n) '/' num2str(mit.coupling.nsteps-1-1)]);
-		t=n*mit.coupling.coupledTimeStep; % current time (s)
-		% update MITgcm transient options
-		newline = [' niter0 = ' num2str(t/mit.inputdata.PARM{3}.deltaT)];
-		command=['!sed "s/.*niter0.*/' newline '/" data > data.temp; mv data.temp data'];
-		eval(command)
-		% run MITgcm
-		disp('about to run MITgcm')
-		tic
-		eval(['!mpirun -np ' int2str(npMIT) ' ./mitgcmuv > out 2> err']);
-		disp('done MITgcm')
-		toc
-	end
-
-
-
-	%%%%
-	% CHECK TO OPEN AN UNGROUNDED CELL
-	% GET NEW BATHYMETRY FROM BATHY AND WRITE TO BATHYEFF
-	% 
-	%%%%
+	%queuename = 'long'; % which queue to submit to (long or devel)
+	%walltime = duration(120,0,0); % walltime to request
+	queuename = 'devel'; % which queue to submit to (long or devel)
+	walltime = duration(1,0,0); % walltime to request
+	% write the .queue file
+	fname = write_queuefile(rundir,grouplist,npMIT,...
+		'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
+	fprintf('Submitting queue file:   ')
+	command=['qsub ' fullfile(rundir,fname)];
+	system(command);	
 end % }}}
 
 % Move back to root directory
@@ -1613,6 +1615,8 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 	checkMccdir=@(x) (isempty(x) | isdir(x));
 	checkIsHelloWorld=@(x) (isempty(x) | strcmp(x,'HelloWorld'));
 
+	checkMccargin=@(x) (isempty(x) | (iscell(x) & numel(x)==2 & isfile(x{1}) & isfile(x{2})));
+
 	addRequired(p,'rundir',@isdir);
 	addRequired(p,'grouplist',@ischar);
 	addRequired(p,'ncpus',checkIsnatural);
@@ -1621,6 +1625,7 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 	addParameter(p,'walltime',[],@isduration);
 	addParameter(p,'iscoupled',0,checkIsbinary);
 	addParameter(p,'mccdir',[],checkMccdir);
+	addParameter(p,'mccargin',[],checkMccargin);
 
 	% parse the inputs and save locally
 	parse(p,rundir,grouplist,ncpus,varargin{:})
@@ -1631,6 +1636,7 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 	walltime  =p.Results.walltime;
 	iscoupled =p.Results.iscoupled;
 	mccdir    =p.Results.mccdir;
+	mccargin  =p.Results.mccargin;
 	if strcmp(p.Results.HelloWorld,'HelloWorld')
 		ishelloworld=1;
 		rundir    =p.Results.rundir;
@@ -1690,7 +1696,6 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 	disp(['  ncpus:     ' num2str(ncpus)]);
 	disp(['  queuename: ' queuename]);
 	disp(['  walltime:  ' char(walltime)]);
-	disp(['  iscoupled: ' num2str(iscoupled)]);
 	if ishelloworld
       disp(['  ishelloworld: ' num2str(ishelloworld)]);
    else
@@ -1730,6 +1735,16 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
          '',...
          'echo "Hello, World"'}];
    elseif iscoupled
+		mcc_command='./run_MCCexecutable.sh';
+		lib_command=['/nasa/netcdf/4.4.1.1_mpt/lib:',...
+			getenv("ISSM_DIR") '/lib:',...
+			getenv("PETSC_DIR") '/lib:',...
+			getenv("MPI_ROOT") '/lib:',...
+			getenv("MKLROOT") '/lib/intel64_lin:',...
+			getenv("MKLROOT") '/../compiler/lib/intel64_lin:',...
+			getenv("ISSM_DIR") '/externalpackages/triangle/install/lib:',...
+			'/nasa/matlab/2022b'];
+		mcc_argin=[mccargin{1} ' ' mccargin{2}];
 		lines = [lines {...
 			'',...
 			'#ISSM stuff', ...
@@ -1740,8 +1755,8 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 			['ln -s ' fullfile(mccdir,'run_MCCexecutable.sh') ' ./'], ...
 			['ln -s ' fullfile(mccdir,'MCCexecutable') ' ./'], ...
 			'', ...
-			''}];
-		error('add launch command for coupled run!');
+			'#run the runcouple executable with the envfile input',...
+			[mcc_command ' ' lib_command ' ' mcc_argin]}];
 	else
 		lines = [lines {...
          '', ...

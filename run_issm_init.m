@@ -349,19 +349,20 @@ if perform(org,'TransientPrep'), % {{{
    md.transient.ismasstransport=1;
    md.transient.isgroundingline=1;
    md.groundingline.migration = 'SubelementMigration';
+   md.transient.requested_outputs={'default','IceVolume','IceVolumeAboveFloatation','BasalforcingsFloatingiceMeltingRate','Thickness','MaskOceanLevelset'};
    md.settings.output_frequency = 1;
    md.timestepping=timesteppingadaptive();
    md.timestepping.time_step_max=0.05;
    md.timestepping.time_step_min=0.0005;
    md.timestepping.start_time=0;
    md.timestepping.final_time=15/365;
+	md.verbose=verbose('convergence',false,'solution',false,'control',false);
 
 	%Basal melt rate
 	md.basalforcings = basalforcings();
    md.basalforcings.groundedice_melting_rate=zeros(md.mesh.numberofvertices,1); % no melting on grounded ice
-
-   %Same as for the drag inversion
-   md.transient.requested_outputs={'default','IceVolume','IceVolumeAboveFloatation','BasalforcingsFloatingiceMeltingRate','Thickness','MaskOceanLevelset'};
+	
+	savemodel(org,md);
 end % }}}
 if perform(org,'PlotInversion'),  % Examine the results of the inversion {{{
    md=loadmodel(org,'InversionC');
