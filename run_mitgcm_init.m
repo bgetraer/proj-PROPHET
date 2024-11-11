@@ -4,7 +4,7 @@
 %  Compile MITgcm
 %  Run MITgcm
 
-steps=[1:7];
+steps=[7];
 
 experiment.name='MITgcm_initialization';
 %experiment.forcing = 'RCP85'; % 'CLIM', 'RCP85', or 'Paris2C'
@@ -1347,15 +1347,23 @@ if perform(org,'RunMITgcmInit') % {{{
 	% loop through each coupled step, run the models, save the ouput
 	disp('*  - begin coupled model')
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
+
+	mit.coupling.nsteps=2;
 	% BEGIN THE LOOP
 	%  n is the number step we are on, from 0:nsteps-1
 	for n=0:(mit.coupling.nsteps-1);
 		display(['STEP ' num2str(n) '/' num2str(mit.coupling.nsteps-1-1)]);
 		t=n*mit.coupling.coupledTimeStep; % current time (s)
 		% update MITgcm transient options
-		newline = [' niter0 = ' num2str(t/mit.inputdata.PARM{3}.deltaT)];
-		command=['!sed "s/.*niter0.*/' newline '/" data > data.temp; mv data.temp data'];
+		newline = [' nIter0 = ' num2str(t/mit.inputdata.PARM{3}.deltaT)];
+		command=['!sed "s/.*nIter0.*/' newline '/" data > data.temp; mv data.temp data'];
 		eval(command)
+		% update ckpt
+		% update the pickup suffix to read the correct file
+		pickupSuff='''ckptA''';
+		newline=['  pickupSuff=' pickupSuff ','];
+		command=['sed "s/.*pickupSuff.*/' newline '/" data > data.temp; mv data.temp data'];
+		system(command);
 		% run MITgcm
 		disp('about to run MITgcm')
 		tic

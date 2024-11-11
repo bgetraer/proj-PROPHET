@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[4];
+steps=[3];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -42,7 +42,7 @@ end
 % }}}
 
 org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps);
-if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{ 
+if perform(org,'MeshParam'),   % {{{ 
 	md=model(); % initialize ISSM model structure
 	% Exp/amundsenicedomain.exp {{{
 	EXP=struct; % initialize domain exp structure
@@ -70,9 +70,11 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 		disp('   -- Interpolating some data');
 		[velx vely] = interpMouginotAnt2017(md.mesh.x,md.mesh.y); % interpolate observed velocities (nominal year 2013) (m/yr)
 		ocean_levelset=-ones(size(md.mesh.x));% all floating
-		ocean_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask')==2))=1; % grounded from BedMachine
+		ocean_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
+			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==2))=1; % grounded from BedMachine
 		ice_levelset=-ones(size(md.mesh.x));
-		ice_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask')==0))=1; % grounded from BedMachine
+		ice_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
+			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==0))=1; % grounded from BedMachine
 
 		pos=find(isnan(velx) | isnan(vely) | ice_levelset>0);% | ocean_levelset<0);
 		velx(pos)=0; vely(pos)=0; vel=sqrt(velx.^2+vely.^2);
@@ -98,8 +100,10 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
    md.materials.rho_water=1028; % ocean water density (kg/m^3)
 
 	% Geometry from BedMachine Antarctica
-	md.geometry.surface = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'surface','linear'); % surface elevation data (m)
-	md.geometry.bed     = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'bed','linear'); % bed elevation data (m)
+	md.geometry.surface = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'surface','linear',...
+		'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc'); % surface elevation data (m)
+	md.geometry.bed     = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'bed','linear',...
+		'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc'); % bed elevation data (m)
 	% Grounded ice base
 	md.geometry.base    = md.geometry.bed; % assume initially all grounded (m)
 	% Open ocean minimum ice surface
@@ -183,9 +187,6 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	% Surface Mass Balance from RACMO
    md.smb.mass_balance = interpRACMOant(md.mesh.x,md.mesh.y); % interpolate accumulation rate data from RACMO (SMB_RACMO2.3_1979_2011.nc) (m/yr ice equivalence)
 
-	% Geothermal heat flux
-   md.basalforcings.geothermalflux  = interpSeaRISE(md.mesh.x,md.mesh.y,'bheatflx_shapiro',-1); % intperolate geothermal flux from Shapiro et al. (W/m^2)
-
 	% Boundary Conditions
 	% reset b.c. on the vertices
    md.stressbalance.spcvx        = NaN(md.mesh.numberofvertices,1);
@@ -206,7 +207,7 @@ if perform(org,'MeshParam'),   % Build ISSM mesh and parameterize{{{
 	% }}}
 	savemodel(org,md);
 end%}}}
-if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
+if perform(org,'InversionB'),  % {{{
    md=loadmodel(org,'MeshParam');
 
    % new inversion with M1QN3 package
@@ -253,7 +254,7 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
 	% Extract the floating model subdomain and prepare to solve
 	% This sets Dirichlet velocity b.c. at the grounding line
    mds=extract(md,md.mask.ocean_levelset<0);
-   mds.cluster=generic('name',oshostname(),'np',45); %for totten 45 ideal
+   mds.cluster=generic('name',oshostname(),'np',90); %for totten 45 ideal
    mds.verbose=verbose('solution',false,'control',true);
    mds.miscellaneous.name='inversion_B';
    mds.friction.C(:)=0; % make sure there is no basal friction
@@ -270,7 +271,7 @@ if perform(org,'InversionB'),  % Invert for flow law parameter B{{{
    md.materials.rheology_B(mds.mesh.extractedvertices) = mds.results.StressbalanceSolution.MaterialsRheologyBbar;
    savemodel(org,md);
 end % }}}
-if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
+if perform(org,'InversionC'),  % {{{
    md=loadmodel(org,'InversionB');
 
 	% new inversion with M1QN3 package
@@ -312,7 +313,7 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
    md.stressbalance.abstol=NaN;   %
 
 	% Prepare to solve
-   md.cluster=generic('name',oshostname(),'np',55);
+   md.cluster=generic('name',oshostname(),'np',90);
    md.verbose=verbose('solution',false,'control',true);
 	md.miscellaneous.name='inversion_friction_C';
 
@@ -341,6 +342,32 @@ if perform(org,'InversionC'),  % Invert for friction coefficient C {{{
 
    savemodel(org,md);
 end%}}}
+if perform(org,'TransientPrep'), % {{{
+	md=loadmodel(org,'InversionC');
+
+   %Set parameters
+   md.inversion.iscontrol=0;
+   md.transient.ismovingfront=0;
+   md.transient.isthermal=0;
+   md.transient.isstressbalance=1;
+   md.transient.ismasstransport=1;
+   md.transient.isgroundingline=1;
+   md.groundingline.migration = 'SubelementMigration';
+   md.transient.requested_outputs={'default','IceVolume','IceVolumeAboveFloatation','BasalforcingsFloatingiceMeltingRate','Thickness','MaskOceanLevelset'};
+   md.settings.output_frequency = 1;
+   md.timestepping=timesteppingadaptive();
+   md.timestepping.time_step_max=0.05;
+   md.timestepping.time_step_min=0.0005;
+   md.timestepping.start_time=0;
+   md.timestepping.final_time=15/365;
+	md.verbose=verbose('convergence',false,'solution',false,'control',false);
+
+	%Basal melt rate
+	md.basalforcings = basalforcings();
+   md.basalforcings.groundedice_melting_rate=zeros(md.mesh.numberofvertices,1); % no melting on grounded ice
+	
+	savemodel(org,md);
+end % }}}
 if perform(org,'PlotInversion'),  % Examine the results of the inversion {{{
    md=loadmodel(org,'InversionC');
 
