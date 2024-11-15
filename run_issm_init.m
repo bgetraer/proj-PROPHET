@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[3];
+steps=[1];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{

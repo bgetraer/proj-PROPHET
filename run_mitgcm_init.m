@@ -1168,8 +1168,8 @@ if perform(org,'RuntimeOptions') % {{{
    mit.inputdata.PARM{3}.deltaT=100.;     % model time step (s)
    mit.inputdata.PARM{3}.nTimeSteps=(mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of model clock timesteps to execute
    % Restart/Pickup Files
-   mit.inputdata.PARM{3}.pChkPtFreq=0;            % permanent pickup checkpoint file write interval (s)
-   mit.inputdata.PARM{3}.ChkptFreq=mit.coupling.coupledTimeStep; % temporary pickup checkpoint file write interval - every coupled time step (s)
+   mit.inputdata.PARM{3}.pChkPtFreq=mit.coupling.coupledTimeStep;            % permanent pickup checkpoint file write interval (s)
+   mit.inputdata.PARM{3}.ChkptFreq=0; % temporary pickup checkpoint file write interval - every coupled time step (s)
    % Frequency/Amount of Output
    mit.inputdata.PARM{3}.monitorFreq=mit.coupling.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
 
@@ -1348,22 +1348,21 @@ if perform(org,'RunMITgcmInit') % {{{
 	disp('*  - begin coupled model')
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 
-	mit.coupling.nsteps=2;
+	mit.coupling.nsteps=10;
 	% BEGIN THE LOOP
 	%  n is the number step we are on, from 0:nsteps-1
 	for n=0:(mit.coupling.nsteps-1);
 		display(['STEP ' num2str(n) '/' num2str(mit.coupling.nsteps-1-1)]);
-		t=n*mit.coupling.coupledTimeStep; % current time (s)
+		niter=n*mit.coupling.coupledTimeStep/mit.inputdata.PARM{3}.deltaT;
+		A=rdmds(sprintf('pickup.%010i',niter));
+		nancheck=any(isnan(A(:)));
+		disp(nancheck);
 		% update MITgcm transient options
-		newline = [' nIter0 = ' num2str(t/mit.inputdata.PARM{3}.deltaT)];
+		newline = [' nIter0 = ' num2str(niter)];
+		display(newline);
 		command=['!sed "s/.*nIter0.*/' newline '/" data > data.temp; mv data.temp data'];
 		eval(command)
 		% update ckpt
-		% update the pickup suffix to read the correct file
-		pickupSuff='''ckptA''';
-		newline=['  pickupSuff=' pickupSuff ','];
-		command=['sed "s/.*pickupSuff.*/' newline '/" data > data.temp; mv data.temp data'];
-		system(command);
 		% run MITgcm
 		disp('about to run MITgcm')
 		tic
