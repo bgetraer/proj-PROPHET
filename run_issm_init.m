@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[4];
+steps=[2];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -45,46 +45,67 @@ org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps)
 if perform(org,'MeshParam'),   % {{{ 
 	md=model(); % initialize ISSM model structure
 	% Exp/amundsenicedomain.exp {{{
-	EXP=struct; % initialize domain exp structure
-	% outline of ice domain in x (m)
-	EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
-		-1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
-		-1772089.1945770399,-1772089.1945770399,-1669315.4719493026]; 
-	% outline of ice domain in y (m)
-	EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
-		-530867.1000391102,-58750.3117179424,170008.8123696489,...
-		70446.7685740285,-420940.0927398402,-420940.0927398402]; 
-	% write to file
-   expfile=fullfile(expdir,'domain.exp');	
-	write_expfile(expfile,EXP);
-	% }}}
+   EXP=struct; % initialize domain exp structure
+   % outline of ice domain in x (m)
+   EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
+      -1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
+      -1772089.1945770399,-1772089.1945770399,-1669315.4719493026];
+   % outline of ice domain in y (m)
+   EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
+      -530867.1000391102,-58750.3117179424,170008.8123696489,...
+      70446.7685740285,-420940.0927398402,-420940.0927398402];
+   % write to file
+   ice_expfile=fullfile(expdir,'ice_domain.exp');
+   write_expfile(ice_expfile,EXP);
+   % }}}
+   % Exp/amundsenoceandomain.exp {{{
+   x0=-1700000; % x origin of the active ocean domain (m)
+   y0=-710000;  % y origin of the active ocean domain (m)
+   Lx=300E3; % length of total ocean domain in x (m)
+   Ly=504E3; % length of total ocean domain in y (m)
+   EXP=struct; % initialize domain exp structure
+   % outline of ocean domain in x (m)
+   EXP.x=[x0, x0, x0+Lx, x0+Lx, x0];
+   % outline of ocean domain in y (m)
+   EXP.y=[y0, y0+Ly, y0+Ly, y0, y0];
+   % write to file
+   ocean_expfile=fullfile(expdir,'ocean_domain.exp');
+   write_expfile(ocean_expfile,EXP);
+   % }}}
+
 	% Mesh {{{
-	hmin=1000; % min edge length (m)
-	hmax=15e3; % max edge length (m)
-	md=triangle(md,expfile,hmin); % initialize unstructured triangular mesh
+   hmin=1000; % min edge length (m)
+   hmax=15e3; % max edge length (m)
+   disp('Initializing triangular mesh');
+   md=triangle(md,ice_expfile,hmin); % initialize unstructured triangular mesh
 
-	nsteps = 2; % number of mesh adaptation steps
-	for i=1:nsteps,
-		disp(['--- Performing static mesh adaptation. Step ' num2str(i) '/' num2str(nsteps)]);
-		% using a priori analysis (observed velocity)
-		disp('   -- Interpolating some data');
-		[velx vely] = interpMouginotAnt2017(md.mesh.x,md.mesh.y); % interpolate observed velocities (nominal year 2013) (m/yr)
-		ocean_levelset=-ones(size(md.mesh.x));% all floating
-		ocean_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask')==2))=1; % grounded from BedMachine
-		ice_levelset=-ones(size(md.mesh.x));
-		ice_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask')==0))=1; % grounded from BedMachine
+   disp('Refining triangular mesh');
+   nsteps = 10; % number of mesh adaptation steps
+   for i=1:nsteps,
+      disp(['--- Performing static mesh adaptation. Step ' num2str(i) '/' num2str(nsteps)]);
+      % using a priori analysis (observed velocity)
+      disp('   -- Interpolating some data');
+      [velx vely] = interpMouginotAnt2017(md.mesh.x,md.mesh.y); % interpolate observed velocities (nominal year 2013) (m/yr)
+      ocean_levelset=-ones(size(md.mesh.x));% all floating
+      ocean_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
+         '/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==2))=1; % grounded from BedMachine
+      ice_levelset=-ones(size(md.mesh.x));
+      ice_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
+         '/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==0))=1; % grounded from BedMachine
 
-		pos=find(isnan(velx) | isnan(vely) | ice_levelset>0);% | ocean_levelset<0);
-		velx(pos)=0; vely(pos)=0; vel=sqrt(velx.^2+vely.^2);
+      pos=find(isnan(velx) | isnan(vely) | ice_levelset>0);% | ocean_levelset<0);
+      velx(pos)=0; vely(pos)=0; vel=sqrt(velx.^2+vely.^2);
 
-		hVertices = NaN(md.mesh.numberofvertices,1);
-		hVertices(find(vel>200)) = hmin;
-		md=bamg(md,'gradation',1.6180,'anisomax',1.e6,'KeepVertices',0,'Hessiantype',0,'Metrictype',0,...
-			'hmax',hmax,'hmin',hmin,'hVertices',hVertices,'field',vel,'err',3);
+      inOcean=ContourToNodes(md.mesh.x,md.mesh.y,ocean_expfile,1); % find vertices in the ocean domain
 
-		md.private.bamg=struct();
-	end
-	% }}}
+      hVertices = NaN(md.mesh.numberofvertices,1);
+      hVertices(vel>200 | inOcean) = hmin;
+      md=bamg(md,'gradation',1.6180,'anisomax',1.e6,'KeepVertices',0,'Hessiantype',0,'Metrictype',0,...
+         'hmax',hmax,'hmin',hmin,'hVertices',hVertices,'field',vel,'err',3);
+
+      md.private.bamg=struct();
+   end
+   % }}}
 	% Param {{{
 	%  Set parameters and options for the ISSM model of the initial ice state
    
@@ -98,8 +119,10 @@ if perform(org,'MeshParam'),   % {{{
    md.materials.rho_water=1028; % ocean water density (kg/m^3)
 
 	% Geometry from BedMachine Antarctica
-	md.geometry.surface = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'surface','linear'); % surface elevation data (m)
-	md.geometry.bed     = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'bed','linear'); % bed elevation data (m)
+	md.geometry.surface = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'surface','linear',...
+		'/nobackupp18/bgetraer/ModelData/BedMachine/BedMachineAntarctica-v4.0.nc'); % surface elevation data (m)
+	md.geometry.bed     = interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'bed','linear',...
+		'/nobackupp18/bgetraer/ModelData/BedMachine/BedMachineAntarctica-v4.0.nc'); % bed elevation data (m)
 	% Grounded ice base
 	md.geometry.base    = md.geometry.bed; % assume initially all grounded (m)
 	% Open ocean minimum ice surface
@@ -250,14 +273,14 @@ if perform(org,'InversionB'),  % {{{
 	% Extract the floating model subdomain and prepare to solve
 	% This sets Dirichlet velocity b.c. at the grounding line
    mds=extract(md,md.mask.ocean_levelset<0);
-   mds.cluster=generic('name',oshostname(),'np',45); %for totten 45 ideal
+   mds.cluster=generic('name',oshostname(),'np',140); %for totten 45 ideal
    mds.verbose=verbose('solution',false,'control',true);
    mds.miscellaneous.name='inversion_B';
    mds.friction.C(:)=0; % make sure there is no basal friction
 
    % Solver parameters
-   mds.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
-   mds.toolkits.DefaultAnalysis.ksp_max_it=500;
+   %mds.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
+   %mds.toolkits.DefaultAnalysis.ksp_max_it=500;
    mds.settings.solver_residue_threshold=1e-6;
 
 	% Solve
@@ -309,7 +332,7 @@ if perform(org,'InversionC'),  % {{{
    md.stressbalance.abstol=NaN;   %
 
 	% Prepare to solve
-   md.cluster=generic('name',oshostname(),'np',55);
+   md.cluster=generic('name',oshostname(),'np',140);
    md.verbose=verbose('solution',false,'control',true);
 	md.miscellaneous.name='inversion_friction_C';
 
@@ -340,6 +363,11 @@ if perform(org,'InversionC'),  % {{{
 end%}}}
 if perform(org,'TransientPrep'), % {{{
 	md=loadmodel(org,'InversionC');
+
+	%Find elements that don't have any ice
+	pos = find(min(md.mask.ice_levelset(md.mesh.elements),[],2)<0);
+	md.mask.ice_levelset(md.mesh.elements(pos,:))= -1;
+	md.mask.ice_levelset   = reinitializelevelset(md, md.mask.ice_levelset);
 
    %Set parameters
    md.inversion.iscontrol=0;
