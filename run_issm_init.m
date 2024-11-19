@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[2];
+steps=[4];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -368,6 +368,8 @@ if perform(org,'TransientPrep'), % {{{
 	pos = find(min(md.mask.ice_levelset(md.mesh.elements),[],2)<0);
 	md.mask.ice_levelset(md.mesh.elements(pos,:))= -1;
 	md.mask.ice_levelset   = reinitializelevelset(md, md.mask.ice_levelset);
+
+	% solve stress
 
    %Set parameters
    md.inversion.iscontrol=0;

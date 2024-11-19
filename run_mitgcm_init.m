@@ -1,3 +1,5 @@
+steps=[8:9];
+
 % PROPHET Amundsen Sea Coupling
 % Outline:
 %	Initialize MITgcm
@@ -9,9 +11,7 @@
 %   'Paris2C' % ensemble average forcings from Paris 2
 %   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
-steps=[8:9];
-
-experiment.name='Paris2C';
+experiment.name='RCP85';
 experiment.init='MITgcm_initialization';
 % directory structure {{{
 mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
@@ -915,7 +915,7 @@ if perform(org,'InitialConditions'), % {{{
    % Define initial ice shelf draft from ISSM
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	disp('reading ice shelf draft from ISSM');
-	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_InversionC.mat');
+	fname = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
 	md = loadmodel(fname);
 	% interpolate initial ice draft and masks from ISSM
 	draft = zeros(mit.mesh.Ny,mit.mesh.Nx);    % initialize matrix for ice draft depth (m)
@@ -1326,11 +1326,12 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	% TIME STEPPING
 	disp(' - Setting timestepping options');
 	% adjust coupling time step parameters
-	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
-	mit.timestepping.nsteps = 3; % number of coupled time steps to take
+	mit.timestepping.coupledTimeStep = 1*24*60*60; % coupling time step: 2 Model weeks (s)
+	mit.timestepping.nsteps = 30; % number of coupled time steps to take
 %	%% DEBUG!!
 %	warning('running with debug coupled timestep');
-%	mit.timestepping.coupledTimeStep=24*60*60;
+	%mit.timestepping.coupledTimeStep=60*60;
+	%mit.timestepping.nsteps = 5; % number of coupled time steps to take
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% input/data 
@@ -1340,7 +1341,8 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	mit.inputdata.PARM{3}.deltaT=100; % make the time step smaller
 	% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
 	% a modeltime of the correct calendar.
-	mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration;  % run start time for this integration (s)
+	%mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration;  % run start time for this integration (s)
+	mit.inputdata.PARM{3}.startTime = 505440*100;  % run start time for this integration (s)
    mit.inputdata.PARM{3}.nIter0    = 0;                                % starting timestep iteration number
    mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of timesteps to execute
    % Restart/Pickup Files
@@ -1380,7 +1382,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	builddir = fullfile(initdir,'build'); % initalization directory where model was compiled
 	inputdir=fullfile(initdir,'input'); % initialization directory for runtime input options
-	runoceandir = fullfile(expdir,'runocean.old'); % run directory for the ocean model spinup
+	runoceandir = fullfile(expdir,'runocean'); % run directory for the ocean model spinup
 	runcoupleddir = fullfile(expdir,'runcoupled'); % run directory for the coupled model
 	% rename previous run directory and create new one
 	oldruncoupleddir=[runcoupleddir '.old'];
@@ -1426,10 +1428,6 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
       copyfile(fullfile(inputdir,source_fnames{i}),fullfile(runcoupleddir,destination_fname{i}));
    end
 
-	%DEBUG
-	disp('REPLACING WITH OLD DRAFT FOR TESTING');
-	copyfile(fullfile(proph_dir,source_fnames{1}),fullfile(runcoupleddir,destination_fname{1}));
-
 	% link mitgcmuv executable
 	filelist={'mitgcmuv'};
 	ln_filelist(builddir,filelist,runcoupleddir); % link file from builddir to runcoupleddir
@@ -1437,7 +1435,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	% link the boundary forcing files
 	S=dir(mit.forcing.Ddir);
 	S=S(contains({S.name},experiment.name));
-	S=S(contains({S.name},'2012') | contains({S.name},'2013'));
+	S=S(contains({S.name},'2010') |contains({S.name},'2011') |contains({S.name},'2012') | contains({S.name},'2013'));
 	filelist={S.name};
 	ln_filelist(mit.forcing.Ddir,filelist,runcoupleddir);
 
@@ -1469,30 +1467,28 @@ if perform(org,'RunCoupled') % {{{
 	queuename = 'devel'; % which queue to submit to (long or devel)
 	walltime = duration(1,0,0); % walltime to request
 	% write the .queue file
-	fname = write_queuefile(rundir,grouplist,npMIT,...
-		'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
-	fprintf('Submitting queue file:   ')
-	command=['qsub ' fullfile(rundir,fname)];
-	system(command);	
+	%fname = write_queuefile(rundir,grouplist,npMIT,...
+	%	'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
+	%fprintf('Submitting queue file:   ')
+	%command=['qsub ' fullfile(rundir,fname)];
+	%system(command);	
 	% if interactive!!
-	%cd(rundir);
-	%%runalone(mdfile,mitfile);
-	%addpath(fullfile(proph_dir,'runcouple'));
-	%runcouple(mdfile,mitfile);
+	cd(rundir);
+	%runalone(mdfile,mitfile);
+	addpath(fullfile(proph_dir,'runcouple'));
+	runcouple(mdfile,mitfile);
 end % }}}
 if perform(org,'RunPickup') % {{{
 	mit=load(org,'RuntimeOptionsCoupled');
-
-	
 
 	% TIME STEPPING
 	disp(' - Setting timestepping options');
 	% adjust coupling time step parameters
 	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
-	mit.timestepping.nsteps = 1; % number of coupled time steps to take
+	mit.timestepping.nsteps = 5; % number of coupled time steps to take
 	%  %% DEBUG!!
 	warning('running with debug coupled timestep');
-	mit.timestepping.coupledTimeStep=1*100;
+	mit.timestepping.coupledTimeStep=1*60*60*24;
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% input/data
@@ -1502,12 +1498,12 @@ if perform(org,'RunPickup') % {{{
 	mit.inputdata.PARM{3}.deltaT=100; % make the time step smaller
 	% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
 	% a modeltime of the correct calendar.
-	mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration + 12960*100;  % run start time for this integration (s)
+	mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration + 6048*100;  % run start time for this integration (s)
 	mit.inputdata.PARM{3}.nIter0    = 0;                                % starting timestep iteration number
 	mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of timesteps to execute
-	mit.inputdata.PARM{3}.nTimeSteps=1; % number of timesteps to execute
+	%mit.inputdata.PARM{3}.nTimeSteps=1; % number of timesteps to execute
 	% Restart/Pickup Files
-	mit.inputdata.PARM{3}.pChkptFreq=100; % permanent pickup checkpoint file write interval (s)
+	mit.inputdata.PARM{3}.pChkptFreq=mit.timestepping.coupledTimeStep; % permanent pickup checkpoint file write interval (s)
 	mit.inputdata.PARM{3}.ChkptFreq=0; % temporary pickup checkpoint file write interval (s)
 	% Frequency/Amount of Output
 	mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
@@ -1538,7 +1534,7 @@ if perform(org,'RunPickup') % {{{
    disp([' - Set runtime options in data.diagnostics file']);
    write_datafile(datafilepath, mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
 
-	mit.inputdata.PARM{3}.nIter0    = 12960;                                % starting timestep iteration number
+	mit.inputdata.PARM{3}.nIter0    = 6048;                                % starting timestep iteration number
 	savedata(org,mit);
 
 	% set run parameters for PBS queue file
