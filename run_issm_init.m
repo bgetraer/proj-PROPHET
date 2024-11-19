@@ -16,7 +16,7 @@
 %
 % https://github.com/bgetraer/proj-PROPHET.git
 
-steps=[1];
+steps=[2];
 
 experiment.name='ISSM_initialization';
 % directory structure {{{
@@ -44,16 +44,19 @@ end
 org=organizer('repository',modeldir,'prefix','PROPHET_issm_init_','steps',steps);
 if perform(org,'MeshParam'),   % {{{ 
 	md=model(); % initialize ISSM model structure
+	mit=loadmodel('experiments/MITgcm_initialization/Models/PROPHET_mitgcm_init_MeshInit.mat'); % load MITgcm mesh
 	% Exp/amundsenicedomain.exp {{{
 	EXP=struct; % initialize domain exp structure
 	% outline of ice domain in x (m)
-	EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
-		-1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
-		-1772089.1945770399,-1772089.1945770399,-1669315.4719493026]; 
-	% outline of ice domain in y (m)
-	EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
-		-530867.1000391102,-58750.3117179424,170008.8123696489,...
-		70446.7685740285,-420940.0927398402,-420940.0927398402]; 
+	EXP.x = 1E6* [-1.3000,-1.5000,-1.6172,-1.6172,  -1.6964,-1.6964,-1.7720,-1.7720,-1.5570,-1.0270,-1.0270,-1.1940,-1.3000];
+	EXP.y = 1E5* [-8.2955,-7.1000,-7.1000,-4.0000,  -3.4100,-3.3740,-1.5327, 0.7045, 1.7001,-0.5875,-5.3087,-8.2955,-8.2955];
+	%EXP.x=[-1669315.4719493026,-1669315.4719493026,-1193987.0047960179,...
+	%	-1026979.7055259449,-1026979.7055259449,-1556906.7128252152,...
+	%	-1772089.1945770399,-1772089.1945770399,-1669315.4719493026]; 
+	%% outline of ice domain in y (m)
+	%EXP.y=[-420940.0927398402,-829553.2314259715,-829553.2314259715,...
+	%	-530867.1000391102,-58750.3117179424,170008.8123696489,...
+	%	70446.7685740285,-420940.0927398402,-420940.0927398402]; 
 	% write to file
    expfile=fullfile(expdir,'domain.exp');	
 	write_expfile(expfile,EXP);
@@ -61,7 +64,17 @@ if perform(org,'MeshParam'),   % {{{
 	% Mesh {{{
 	hmin=1000; % min edge length (m)
 	hmax=15e3; % max edge length (m)
-	md=triangle(md,expfile,hmin); % initialize unstructured triangular mesh
+
+	% Force bamg to have vertices coinciding with MITgcm grid points within 10km of floating ice
+	mit_mask = interpBedmachineAntarctica(mit.mesh.hXC, mit.mesh.hYC, 'mask'); % BedMachine mask field on the MITgcm grid
+	A = (mit_mask==3); % floating ice mask field on the MITgcm grid
+	distances = (mit.mesh.hXC(1,2) - mit.mesh.hXC(1,1))*bwdist(A); % distance from floating ice on the MITgcm grid
+	pos = find(mit_mask==3 | (mit_mask==2 & distances<10e3)); % index of MITgcm grid points where ISSM vertices must coincide
+	x_mitgcm_floating = mit.mesh.hXC(pos); % x coordinates where ISSM vertices must coincide with MITgcm grid points
+	y_mitgcm_floating = mit.mesh.hYC(pos); % y coordinates where ISSM vertices must coincide with MITgcm grid points
+
+	% initialize unstructured triangular mesh
+	md = bamg(md, 'domain', expfile, 'hmax', hmin, 'RequiredVertices', [x_mitgcm_floating y_mitgcm_floating]); 
 
 	nsteps = 2; % number of mesh adaptation steps
 	for i=1:nsteps,
@@ -69,23 +82,27 @@ if perform(org,'MeshParam'),   % {{{
 		% using a priori analysis (observed velocity)
 		disp('   -- Interpolating some data');
 		[velx vely] = interpMouginotAnt2017(md.mesh.x,md.mesh.y); % interpolate observed velocities (nominal year 2013) (m/yr)
-		ocean_levelset=-ones(size(md.mesh.x));% all floating
+		ocean_levelset=-ones(size(md.mesh.x)); % all floating
 		ocean_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
-			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==2))=1; % grounded from BedMachine
-		ice_levelset=-ones(size(md.mesh.x));
+			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==2))=1; % set grounded ice from BedMachine
+		ice_levelset=-ones(size(md.mesh.x)); % all ice
 		ice_levelset(find(interpBedmachineAntarctica(md.mesh.x,md.mesh.y,'mask','linear',...
-			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==0))=1; % grounded from BedMachine
+			'/totten_1/ModelData/Antarctica/BedMachine/BedMachineAntarctica-v4.0.nc')==0))=1; % set no ice from BedMachine
 
-		pos=find(isnan(velx) | isnan(vely) | ice_levelset>0);% | ocean_levelset<0);
+		pos=find(isnan(velx) | isnan(vely) | ice_levelset>0); % replace no ice areas with zero velocity
 		velx(pos)=0; vely(pos)=0; vel=sqrt(velx.^2+vely.^2);
 
 		hVertices = NaN(md.mesh.numberofvertices,1);
 		hVertices(find(vel>200)) = hmin;
+
 		md=bamg(md,'gradation',1.6180,'anisomax',1.e6,'KeepVertices',0,'Hessiantype',0,'Metrictype',0,...
 			'hmax',hmax,'hmin',hmin,'hVertices',hVertices,'field',vel,'err',3);
-
-		md.private.bamg=struct();
 	end
+	figure(1);clf;
+	plotmodel(md,'data','mesh','figure',1);
+	hold on;
+	plot(x_mitgcm_floating,y_mitgcm_floating,'ro');
+	plot(EXP.x,EXP.y,'k-x');
 	% }}}
 	% Param {{{
 	%  Set parameters and options for the ISSM model of the initial ice state
@@ -201,12 +218,17 @@ if perform(org,'MeshParam'),   % {{{
    md.stressbalance.spcvy(pos)   = md.initialization.vy(pos); % set y component b.c. (m yr^-1)
 	md.stressbalance.spcvx(isnan(md.stressbalance.spcvx(pos)))=0;
 	md.stressbalance.spcvy(isnan(md.stressbalance.spcvy(pos)))=0;
+	md.masstransport.spcthickness(pos) = md.geometry.thickness(pos); % set inflow boundary thickness b.c. (m)
+	md.masstransport.spcthickness(isnan(md.masstransport.spcthickness(pos)))=0;
+
+	% kill ice bergs
+	md.mask.ice_levelset=killberg(md);
 
    % Use SSA equations for ice flow
    md=setflowequation(md,'SSA','all');
 	% }}}
 	savemodel(org,md);
-end%}}}
+end% }}}
 if perform(org,'InversionB'),  % {{{
    md=loadmodel(org,'MeshParam');
 
@@ -230,9 +252,9 @@ if perform(org,'InversionB'),  % {{{
    md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
 	
 	% Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
-   md.inversion.cost_functions_coefficients(:,1) = 4.5; % coefficient for linear fit
+   md.inversion.cost_functions_coefficients(:,1) = 3; % coefficient for linear fit
    md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 0.5E-20; % coefficient for regularization
+   md.inversion.cost_functions_coefficients(:,3) = 1E-21; % coefficient for regularization
 	load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
    md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
@@ -260,8 +282,8 @@ if perform(org,'InversionB'),  % {{{
    mds.friction.C(:)=0; % make sure there is no basal friction
 
    % Solver parameters
-   mds.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
-   mds.toolkits.DefaultAnalysis.ksp_max_it=500;
+   %mds.toolkits.DefaultAnalysis=bcgslbjacobioptions();% biconjugate gradient with block Jacobi preconditioner
+   %mds.toolkits.DefaultAnalysis.ksp_max_it=500;
    mds.settings.solver_residue_threshold=1e-6;
 
 	% Solve
@@ -294,9 +316,9 @@ if perform(org,'InversionC'),  % {{{
    md.inversion.cost_functions_coefficients=ones(md.mesh.numberofvertices,length(md.inversion.cost_functions)); % cost function coefficient at every node
 
    % Cost function coefficients: cost functions 101 and 103 should have about the same contribution at the end of the inversion
-   md.inversion.cost_functions_coefficients(:,1) = 600; % coefficient for linear fit
+   md.inversion.cost_functions_coefficients(:,1) = 700; % coefficient for linear fit
    md.inversion.cost_functions_coefficients(:,2) = 1; % coefficient for log space fit (always 1)
-   md.inversion.cost_functions_coefficients(:,3) = 5E-10; % coefficient for regularization
+   md.inversion.cost_functions_coefficients(:,3) = 1E-10; % coefficient for regularization
    load(fullfile(modeldir, 'pos_vel_nan.mat'),'pos_vel_nan'); % load locations of NaN data
    md.inversion.cost_functions_coefficients(pos_vel_nan,:)=0; % do not try to fit positions with NaN in the velocity data set
 
