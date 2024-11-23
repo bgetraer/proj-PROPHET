@@ -13,6 +13,8 @@ steps=[8:9];
 
 experiment.name='RCP85';
 experiment.init='MITgcm_initialization';
+mit_dT      = 100; % s
+coupling_dT = 15*24*60*60; % s
 % directory structure {{{
 mitgcm_dir='/nobackup/bgetraer/MITgcm'; % MITgcm directory (pleaides)
 %mitgcm_dir='/totten_1/bgetraer/MITgcm'; % MITgcm directory (totten)
@@ -1324,58 +1326,65 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	mit=load(org,'RuntimeOptionsOcean');
 
 	% TIME STEPPING
+	% During the coupled phase our ocean model does two runs per coupled step:
+	%		1) "Relaxation run"
+	%			- immediately after updating the ice shelf geometry
+	%			- uses a much smaller deltaT
+	%			- runs for duration defined by relaxT
+	%		2) "Continuation run"
+	%			- uses pickup from the relaxation run
+	%			- uses a larger deltaT
+	%			- runs until the end of the coupledTimeStep
+	% The two runs are defined by different sets of data parameters that are set 
+	%	during the run
 	disp(' - Setting timestepping options');
-	% adjust coupling time step parameters
-	mit.timestepping.coupledTimeStep = 1*24*60*60; % coupling time step: 2 Model weeks (s)
-	mit.timestepping.nsteps = 30; % number of coupled time steps to take
-%	%% DEBUG!!
-%	warning('running with debug coupled timestep');
-	%mit.timestepping.coupledTimeStep=60*60;
-	%mit.timestepping.nsteps = 5; % number of coupled time steps to take
+	mit.timestepping.ispickup         = 0;                                                         % are we running a pickup or an initial coupling [0,1]
+	mit.timestepping.coupled_basetime = mit.timestepping.spinupduration;                           % the model time that we are starting coupling from (s)
+	mit.timestepping.startTime        = mit.timestepping.coupled_basetime;                         % modeltime of the start of the simulation (s)
+	mit.timestepping.deltaT_coupled   = coupling_dT;                                               % coupling time step (s)
+	mit.timestepping.coupledT         = 60*24*60*60;                                               % duration of coupling simulation (s)
+	mit.timestepping.nsteps           = mit.timestepping.coupledT/mit.timestepping.deltaT_coupled; % number of coupled time steps to take
+	mit.timestepping.relaxT           = 1*60*60;                                                   % duration of relaxation time after coupling (s)
+	mit.timestepping.deltaT_relax     = 10;                                                        % small deltaT to use for relaxation run (s)
+	mit.timestepping.contT            = mit.timestepping.deltaT_coupled-mit.timestepping.relaxT;  % duration of continuation run after relaxation (s)
+	mit.timestepping.deltaT_cont      = 100;                                                       % large deltaT to use for continuation run (s)
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% input/data 
+	% ./data
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% These fields get set at each run within the coupling function. here are just placeholders.
 	% Run Start and Duration 
-	% Stabilization
-	mit.inputdata.PARM{3}.deltaT=100; % make the time step smaller
-	% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
-	% a modeltime of the correct calendar.
-	%mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration;  % run start time for this integration (s)
-	mit.inputdata.PARM{3}.startTime = 505440*100;  % run start time for this integration (s)
-   mit.inputdata.PARM{3}.nIter0    = 0;                                % starting timestep iteration number
-   mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of timesteps to execute
+	mit.inputdata.PARM{3}.deltaT      = 0; % mitgcm deltaT (s) 
+	mit.inputdata.PARM{3}.startTime   = 0; % run start time for this integration (s)
+   mit.inputdata.PARM{3}.nIter0      = 0; % starting timestep iteration number
+   mit.inputdata.PARM{3}.nTimeSteps  = 0; % number of timesteps to execute
    % Restart/Pickup Files
-   mit.inputdata.PARM{3}.pChkptFreq=mit.timestepping.coupledTimeStep; % permanent pickup checkpoint file write interval (s)
-   mit.inputdata.PARM{3}.ChkptFreq=0; % temporary pickup checkpoint file write interval (s)
+   mit.inputdata.PARM{3}.pChkptFreq  = 0; % permanent pickup checkpoint file write interval (s)
+   mit.inputdata.PARM{3}.ChkptFreq   = 0; % temporary pickup checkpoint file write interval (s)
    % Frequency/Amount of Output
-   mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
+   mit.inputdata.PARM{3}.monitorFreq = 0; % interval to write monitor output - every coupled time step (s)
 	% Initialization files
-	mit.fname.uvelfile='uvel.bin';
-	mit.fname.vvelfile='vvel.bin';
-	mit.fname.thetafile='theta.bin';
-	mit.fname.saltfile='salt.bin';
-	mit.fname.etanfile='etan.bin';
-	mit.inputdata.PARM{5}.uVelInitFile=['''' mit.fname.uvelfile ''''];
-	mit.inputdata.PARM{5}.vVelInitFile=['''' mit.fname.vvelfile ''''];
-	mit.inputdata.PARM{5}.hydrogThetaFile=['''' mit.fname.thetafile ''''];
-	mit.inputdata.PARM{5}.hydrogSaltFile=['''' mit.fname.saltfile ''''];
-	mit.inputdata.PARM{5}.pSurfInitFile=['''' mit.fname.etanfile ''''];
+	mit.fname.uvelfile  = 'uvel.bin';
+	mit.fname.vvelfile  = 'vvel.bin';
+	mit.fname.thetafile = 'theta.bin';
+	mit.fname.saltfile  = 'salt.bin';
+	mit.fname.etanfile  = 'etan.bin';
+	mit.inputdata.PARM{5}.uVelInitFile    = ['''' mit.fname.uvelfile ''''];
+	mit.inputdata.PARM{5}.vVelInitFile    = ['''' mit.fname.vvelfile ''''];
+	mit.inputdata.PARM{5}.hydrogThetaFile = ['''' mit.fname.thetafile ''''];
+	mit.inputdata.PARM{5}.hydrogSaltFile  = ['''' mit.fname.saltfile ''''];
+	mit.inputdata.PARM{5}.pSurfInitFile   = ['''' mit.fname.etanfile ''''];
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.diagnostics
+   % ./data.diagnostics
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	mit.inputdata.DIAG{1}.N(1).frequency=0;
 	mit.inputdata.DIAG{1}.N(2).frequency=0;
-	mit.inputdata.DIAG{1}.N(3).frequency=mit.timestepping.coupledTimeStep;
+	mit.inputdata.DIAG{1}.N(3).frequency=0;
 
 	% print settings
 	disp('mit.timestepping:');
 	disp(mit.timestepping);
-	disp('data: PARM03:');
-	disp(mit.inputdata.PARM{3});
-	disp('data.diagnostics: output-stream 3:');
-	disp(mit.inputdata.DIAG{1}.N(3));
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% Directory management
@@ -1383,7 +1392,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	builddir = fullfile(initdir,'build'); % initalization directory where model was compiled
 	inputdir=fullfile(initdir,'input'); % initialization directory for runtime input options
 	runoceandir = fullfile(expdir,'runocean'); % run directory for the ocean model spinup
-	runcoupleddir = fullfile(expdir,'runcoupled'); % run directory for the coupled model
+	runcoupleddir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory for the coupled model
 	% rename previous run directory and create new one
 	oldruncoupleddir=[runcoupleddir '.old'];
 	if exist(oldruncoupleddir), rmdir(oldruncoupleddir,'s'); end
@@ -1395,13 +1404,15 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	% Build run directory
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	disp(['  - Initializing coupledrun directory in ' runcoupleddir])
-	% copy files from runoceandir
-	deltaTspinup=100;
-	niter_pickup=mit.inputdata.PARM{3}.startTime/deltaTspinup;
-	[fname_meta,fname_data]=getpickup(runoceandir,niter_pickup);
-	% rename files to niter0 
-	source_fnames={fname_meta,fname_data,'hFacC.meta','hFacC.data'};
-	suffix=sprintf('save.%010i',mit.inputdata.PARM{3}.nIter0);
+	% copy files from runoceandir: get the files matching the right start time, 
+	% and copy to the runcoupleddir, using the modeltime as the new reference suffix
+	modeltime_pickup = mit.timestepping.startTime;                                                       % the modeltime we want to start from
+	pickup_fname     = searchMITgcmFile(runoceandir,'pickup','timeInterval',modeltime_pickup);           % find the matching pickup file
+	melt_fname       = searchMITgcmFile(runoceandir,'SHICE_fwFluxtave','timeInterval',modeltime_pickup); % find the matching melt file
+	% rename files to modeltime
+	source_fnames={[pickup_fname '.meta'],[pickup_fname '.data'],[melt_fname '.meta'],[melt_fname '.data'],...
+		'hFacC.meta','hFacC.data'};
+	suffix=sprintf('save.%010i',modeltime_pickup);
 	disp(['   copying ' num2str(numel(source_fnames)) ' files from']);
 	disp(['       ' runoceandir ' to']);
 	disp(['       ' runcoupleddir]);
@@ -1433,40 +1444,27 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	ln_filelist(builddir,filelist,runcoupleddir); % link file from builddir to runcoupleddir
 
 	% link the boundary forcing files
-	S=dir(mit.forcing.Ddir);
-	S=S(contains({S.name},experiment.name));
-	S=S(contains({S.name},'2010') |contains({S.name},'2011') |contains({S.name},'2012') | contains({S.name},'2013'));
-	filelist={S.name};
+	filelist={dir(fullfile(mit.forcing.Ddir,['*' experiment.name '*'])).name};
 	ln_filelist(mit.forcing.Ddir,filelist,runcoupleddir);
 
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % write data file
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	datafilepath=fullfile(runcoupleddir,'data');
-   disp([' - Set runtime options in data file']);
-   write_datafile(datafilepath, mit.inputdata.PARM, 'MODEL PARAMETERS');
-
-	datafilepath=fullfile(runcoupleddir,'data.diagnostics');
-   disp([' - Set runtime options in data.diagnostics file']);
-	write_datafile(datafilepath, mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
-
-	savedata(org,mit);
+	save(fullfile(runcoupleddir,'RuntimeOptionsCoupled'),'mit');
 end % }}}
 if perform(org,'RunCoupled') % {{{
-	mit=load(org,'RuntimeOptionsCoupled');
+	rundir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory for the coupled model
+	mitfile=fullfile(rundir,'RuntimeOptionsCoupled.mat');
+	%rundir = fullfile(expdir,'runcoupled'); % which experimen directory to run
+	mit=loadmodel(mitfile);
 	
 	% set run parameters for PBS queue file
-	rundir = fullfile(expdir,'runcoupled'); % which experimen directory to run
 	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
-	mitfile = fullfile(org.repository,[org.prefix,'RuntimeOptionsCoupled.mat']);
 	grouplist = 's2950'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 	%queuename = 'long'; % which queue to submit to (long or devel)
-	%walltime = duration(120,0,0); % walltime to request
+	%walltime = duration(48,0,0); % walltime to request
 	queuename = 'devel'; % which queue to submit to (long or devel)
 	walltime = duration(1,0,0); % walltime to request
-	% write the .queue file
+	%% write the .queue file
 	%fname = write_queuefile(rundir,grouplist,npMIT,...
 	%	'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
 	%fprintf('Submitting queue file:   ')
@@ -1476,65 +1474,40 @@ if perform(org,'RunCoupled') % {{{
 	cd(rundir);
 	%runalone(mdfile,mitfile);
 	addpath(fullfile(proph_dir,'runcouple'));
-	runcouple(mdfile,mitfile);
+	%runcouple(mdfile,mitfile);
+	runcouple_beta(mdfile,mitfile);
 end % }}}
 if perform(org,'RunPickup') % {{{
 	mit=load(org,'RuntimeOptionsCoupled');
 
+	modeltime_pickup = 0;
 	% TIME STEPPING
+   % During the coupled phase our ocean model does two runs per coupled step:
+   %     1) "Relaxation run"
+   %        - immediately after updating the ice shelf geometry
+   %        - uses a much smaller deltaT
+   %        - runs for duration defined by relaxT
+   %     2) "Continuation run"
+   %        - uses pickup from the relaxation run
+   %        - uses a larger deltaT
+   %        - runs until the end of the coupledTimeStep
+   % The two runs are defined by different sets of data parameters that are set
+   %  during the run
 	disp(' - Setting timestepping options');
-	% adjust coupling time step parameters
-	mit.timestepping.coupledTimeStep = 15*24*60*60; % coupling time step: 2 Model weeks (s)
-	mit.timestepping.nsteps = 5; % number of coupled time steps to take
-	%  %% DEBUG!!
-	warning('running with debug coupled timestep');
-	mit.timestepping.coupledTimeStep=1*60*60*24;
+   mit.timestepping.ispickup         = 1;                                                         % are we running a pickup or an initial coupling [0,1]
+   mit.timestepping.startTime        = modeltime_pickup;                                          % modeltime of the start of the simulation (s)
+   mit.timestepping.nsteps           = mit.timestepping.coupledT/mit.timestepping.deltaT_coupled; % number of coupled time steps to take
+   mit.timestepping.relaxT           = 1*60*60;                                                   % duration of relaxation time after coupling (s)
+   mit.timestepping.deltaT_relax     = 10;                                                        % small deltaT to use for relaxation run (s)
+   mit.timestepping.contT            = mit.timestepping.deltaT_coupled-mit.timestepping.relaxT;  % duration of continuation run after relaxation (s)
+   mit.timestepping.deltaT_cont      = 100;                                                       % large deltaT to use for continuation run (s)
 
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% input/data
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	% Run Start and Duration
-	% Stabilization
-	mit.inputdata.PARM{3}.deltaT=100; % make the time step smaller
-	% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
-	% a modeltime of the correct calendar.
-	mit.inputdata.PARM{3}.startTime = mit.timestepping.spinupduration + 6048*100;  % run start time for this integration (s)
-	mit.inputdata.PARM{3}.nIter0    = 0;                                % starting timestep iteration number
-	mit.inputdata.PARM{3}.nTimeSteps=(mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT); % number of timesteps to execute
-	%mit.inputdata.PARM{3}.nTimeSteps=1; % number of timesteps to execute
-	% Restart/Pickup Files
-	mit.inputdata.PARM{3}.pChkptFreq=mit.timestepping.coupledTimeStep; % permanent pickup checkpoint file write interval (s)
-	mit.inputdata.PARM{3}.ChkptFreq=0; % temporary pickup checkpoint file write interval (s)
-	% Frequency/Amount of Output
-	mit.inputdata.PARM{3}.monitorFreq=mit.timestepping.coupledTimeStep; % interval to write monitor output - every coupled time step (s)
-	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % input/data.diagnostics
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	mit.inputdata.DIAG{1}.N(1).frequency=0;
-	mit.inputdata.DIAG{1}.N(2).frequency=0;
-	mit.inputdata.DIAG{1}.N(3).frequency=mit.timestepping.coupledTimeStep;
 
 	% print settings
-	disp('mit.timestepping:');
-	disp(mit.timestepping);
-	disp('data: PARM03:');
-	disp(mit.inputdata.PARM{3});
-	disp('data.diagnostics: output-stream 3:');
-	disp(mit.inputdata.DIAG{1}.N(3));
+   disp('mit.timestepping:');
+   disp(mit.timestepping);
 
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % write data file
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   datafilepath=fullfile(expdir,'runcoupled','data');
-   disp([' - Set runtime options in data file']);
-   write_datafile(datafilepath, mit.inputdata.PARM, 'MODEL PARAMETERS');
-
-	datafilepath=fullfile(expdir,'runcoupled','data.diagnostics');
-   disp([' - Set runtime options in data.diagnostics file']);
-   write_datafile(datafilepath, mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
-
-	mit.inputdata.PARM{3}.nIter0    = 6048;                                % starting timestep iteration number
+	% save mit structure
 	savedata(org,mit);
 
 	% set run parameters for PBS queue file
@@ -1544,21 +1517,21 @@ if perform(org,'RunPickup') % {{{
 	mitfile = fullfile(org.repository,[org.prefix,'RunPickup.mat']);
 	grouplist = 's2950'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
-	%queuename = 'long'; % which queue to submit to (long or devel)
-	%walltime = duration(120,0,0); % walltime to request
-	queuename = 'devel'; % which queue to submit to (long or devel)
-	walltime = duration(1,0,0); % walltime to request
+	queuename = 'long'; % which queue to submit to (long or devel)
+	walltime = duration(120,0,0); % walltime to request
+	%queuename = 'devel'; % which queue to submit to (long or devel)
+	%walltime = duration(1,0,0); % walltime to request
 	% write the .queue file
 	fname = write_queuefile(rundir,grouplist,npMIT,...
 		'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
-	%fprintf('Submitting queue file:   ')
-	%command=['qsub ' fullfile(rundir,fname)];
-	%system(command);	
-	% if interactive!!
-	cd(rundir);
-	%runalone(mdfile,mitfile);
-	addpath(fullfile(proph_dir,'runcouple'));
-	runcouple(mdfile,mitfile);
+	fprintf('Submitting queue file:   ')
+	command=['qsub ' fullfile(rundir,fname)];
+	system(command);	
+	%% if interactive!!
+	%cd(rundir);
+	%%runalone(mdfile,mitfile);
+	%addpath(fullfile(proph_dir,'runcouple'));
+	%runcouple(mdfile,mitfile);
 end % }}}
 
 % Move back to root directory
@@ -1567,31 +1540,36 @@ cd(proph_dir);
 
 return
 % local functions 
-function [fname_meta,fname_data]=getpickup(parentdir,nIter0) % {{{
-%GETPICKUP finds the pickup file in the parentdir that matches the niter number
-   pickup_fnames = {'pickup.ckptA','pickup.ckptB'}; % the .meta file names
-   for i=1:numel(pickup_fnames)
-      fid=fopen(fullfile(parentdir,[pickup_fnames{i} '.meta']));
-      if fid~=-1
-         tline=fgetl(fid); % read the next line
-         while ischar(tline)
-            if contains(tline, 'timeStepNumber')
-               break;
-            end
-            tline = fgetl(fid); % read the next line
-         end
-         fclose(fid);
-         niter(i)=str2num(extractBefore(extractAfter(tline,'['),']'));
-      end
-   end
-   pickup_ind=find(niter==nIter0); % match the right pickup file
-   if isempty(pickup_ind)
-      error('No pickup file is found for nIter0!');
-   else
-      fname=pickup_fnames(pickup_ind);
-      fname_meta=[fname{:} '.meta'];
-      fname_data=[fname{:} '.data'];
-   end
+function [fname] = searchMITgcmFile(parentdir,prefix,fieldname,value); % {{{
+	% searchMITgcmFile finds all files in parentdir that match prefix*.meta and returns the 
+	% filename (without extension) of the file which contains fieldname = value
+	% Example: 
+	%    searchMITgcmFile(rundir,'pickup','timeStepNumber',niter0);
+	%    searchMITgcmFile(rundir,'SHICE_fwFluxtave','timeInterval',startTime);
+	fnames=flip({dir(fullfile(parentdir, [prefix '*.meta'])).name}); % match prefix to filenames, search in reverse order 
+	i=1;
+	while i<=numel(fnames)
+		fid=fopen(fullfile(parentdir,fnames{i}));
+		tline=fgetl(fid); % read the next line
+		while ischar(tline)
+			if contains(tline, fieldname)
+				break;
+			end
+			tline = fgetl(fid); % read the next line
+		end
+		fclose(fid);
+		thisvalue=str2num(extractBefore(extractAfter(tline,'['),']'));
+		if thisvalue(end)==value
+			break;
+		else
+			i=i+1;
+		end
+	end
+	if i>numel(fnames)
+		error('No pickup file is found for modeltime_pickup!');
+	else
+		fname=extractBefore(fnames{i},'.meta');
+	end
 end % }}}
 function D=readmeta(parentdir,fname,varargin) % {{{
 %READMETA looks for a file of the form fname*.meta in parentdir
