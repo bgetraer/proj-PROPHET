@@ -41,8 +41,8 @@ function runcouple(mdfile,mitfile)
 
 	% Model execution parameters
 	nprocs=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm and ISSM
-	md.cluster=generic('name',oshostname(),'np',nprocs); % set number of processors for ISSM.
-	md.timestepping.final_time=mit.timestepping.coupledTimeStep./md.constants.yts; % how long to run ISSM for (y)
+	md.cluster=generic('name',oshostname(),'np',min(nprocs,70)); % set number of processors for ISSM.
+	md.timestepping.final_time=mit.timestepping.deltaT_coupled./md.constants.yts; % how long to run ISSM for (y)
 	md_prefix = 'runcouple'; % the ISSM model name prefix for execution files
 
 	% Static fields for opening and closing draft cells
@@ -56,16 +56,19 @@ function runcouple(mdfile,mitfile)
 	% modeltime is the MITgcm modeltime starting from the calendar start date (2010)
 	% coupled_basetime is the MITgcm modeltime that we start the coupling at (2013)
 	% basetime is the MITgcm modeltime that the current model starts at 
-	coupled_basetime=mit.inputdata.PARM{3}.startTime; % modeltime that we start coupling at
-	niter0=mit.inputdata.PARM{3}.nIter0; % starting niter
-	modelIterEnd=mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT; % the final timestep number of each model run
+	relaxEndIter = mit.timestepping.relaxT/mit.timestepping.deltaT_relax;        % the final timestep iteration number of each relaxation run
+	contEndIter  = mit.timestepping.contT/mit.timestepping.deltaT_cont;          % the final timestep iteration number of each relaxation run
 	% }}}
 	% initial parameters and fields {{{
-	disp(['starting at niter=' num2str(niter0)]);
-	if niter0==0
-		deltaBase=zeros(size(md.geometry.base)); % the change in ice shelf draft from ISSM (initialize to zero) (m)
-	elseif niter0>0
-		fname = sprintf('issmDiag.%010i.mat', niter0); % issm results to load into md
+	if mit.timestepping.ispickup==0
+		if mit.timestepping.coupled_basetime~=mit.timestepping.startTime
+			error('mit.timestepping.startTime is not equal to mit.timestepping.coupled_basetime, but md.timestepping.ispickup is FALSE');
+		end
+		disp(['Starting new coupled run from mit.timestepping.coupled_basetime = ' num2str(mit.timestepping.coupled_basetime)]);
+		deltaBase=zeros(size(md.geometry.base)); % the change in ice shelf draft from ISSM (initialize to zero) (m)	
+	elseif mit.timestepping.ispickup==1
+		disp(['Picking up coupled run from mit.timestepping.startTime = ', num2str(mit.timestepping.startTime)]);
+		fname = sprintf('issmDiag.%010i.mat', mit.timestepping.startTime); % issm results to load into md
 		disp(['  reading ISSM results file ' fname]);
 		load(fname); % load results structure
 		md.geometry.base            = results.Base;
@@ -78,20 +81,23 @@ function runcouple(mdfile,mitfile)
 		deltaBase                   = results.deltaBase;
 	end
 	% }}}
-
-	for n=-1:(mit.timestepping.nsteps-1)
-		% Update timekeeping
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		display(['COUPLED STEP ' num2str(n+1) '/' num2str(mit.timestepping.nsteps)]);
-		modeltime  = coupled_basetime+(n)*mit.timestepping.coupledTimeStep;                      % the current modeltime
-		niter      = niter0 + (n)*mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT; % the current niter
-		niter_next = niter0 + (n+1)*mit.timestepping.coupledTimeStep/mit.inputdata.PARM{3}.deltaT; % the updated niter
-
-		if n>=0
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% Update draft
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			fname=sprintf('draft.save.%010i.bin',niter);
+	% loop coupled steps {{{
+	%for n=-1:(mit.timestepping.nsteps-1)
+	for n=0:(mit.timestepping.nsteps-1)
+		% update timekeeping {{{
+		disp(['COUPLED STEP ' num2str(n+1) '/' num2str(mit.timestepping.nsteps)]);
+		modeltime       = mit.timestepping.startTime + (n)*mit.timestepping.deltaT_coupled; % the start modeltime of this coupled step
+		modeltime_cont  = modeltime + mit.timestepping.relaxT;                              % the modeltime after the relaxation run
+		modeltime_next  = modeltime + mit.timestepping.deltaT_coupled;                      % the modeltime at the end of this coupled step
+		elapse_y        = floor(modeltime/mit.timestepping.y2s); % elapsed years
+		elapse_remsec   = mod(modeltime,mit.timestepping.y2s);   % elapsed remaining seconds
+		disp(sprintf('modeltime: %010i',modeltime));
+		disp(sprintf('elapsed time: %i yr, %s dd:mm:hh:ss',elapse_y,string(seconds(elapse_remsec),'dd:hh:mm:ss')));
+		% }}}
+		% ocean model {{{
+		%if modeltime>=mit.timestepping.coupled_basetime
+			% update draft {{{
+			fname=sprintf('draft.save.%010i.bin',modeltime);
 			disp(['  reading previous draft file ' fname]);
 			draft=binread(fname,8,[mit.mesh.Nx,mit.mesh.Ny]); % existing MITgcm draft in col,row matrix (m)
 
@@ -123,56 +129,10 @@ function runcouple(mdfile,mitfile)
 			newdraft(1,:)=mit.geometry.draftOBW;  % set draft at left boundary (m)
 			disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
 			disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-
-			%		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%		% Update draft
-			%		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%		fname=sprintf('draft.save.%010i.bin',niter);
-			%		disp(['  reading previous draft file ' fname]);
-			%		draft=binread(fname,8,[mit.mesh.Nx,mit.mesh.Ny]); % existing MITgcm draft in col,row matrix (m)
-			%
-			%		disp('  interpolating draft from ISSM');
-			%		newdraft=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.geometry.base,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',0); % ISSM draft (m)
-			%		newdraft=permute(reshape(newdraft,mit.mesh.Ny,mit.mesh.Nx),[2,1]); % updated ISSM draft in col,row matrix (m)
-			%      disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%      disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-			%
-			%		disp('   applying ocean mask');
-			%		mask_oce=InterpFromMeshToMesh2d(md.mesh.elements,md.mesh.x,md.mesh.y,md.mask.ocean_levelset,mit.mesh.hXC(:),mit.mesh.hYC(:),'default',-1); % -1 ocean, 1 grounded
-			%		mask_oce=permute(reshape(mask_oce,mit.mesh.Ny,mit.mesh.Nx),[2,1]); % ISSM ocean mask in col,row matrix (m)
-			%		newdraft(mask_oce>0 & mask_ice<0)=bathy(mask_oce>0 & mask_ice<0); % set all grounded ice to have a draft equal to the bathymetry (m)
-			%		disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%		disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-			%
-			%		disp('   applying ice mask');
-			%		newdraft(mask_ice>0)=0;                 % set all open ocean to have zero draft (m)
-			%		disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%		disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-			%
-			%		disp('  calculating deltaDraft');
-			%		deltaDraft=newdraft - draft; % the deltaDraft (m)
-			%		disp(['   - num deltaDraft cells = ' num2str(sum(deltaDraft(:)~=0))]);
-			%
-			%		disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%		disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-			%
-			%		disp('  capping deltaDraft');
-			%		max_deltaDraft=5; % maximimum change allowed per coupled step (1m)
-			%		cap_deltaDraft=max(min(deltaDraft,max_deltaDraft),-max_deltaDraft);
-			%		newdraft=draft+cap_deltaDraft;
-			%      disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%      disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-			%
-			%		disp('   applying OBCS mask');
-			%		newdraft(:,1)=mit.geometry.draftOBS;  % set draft at bottom boundary (m)
-			%		newdraft(1,:)=mit.geometry.draftOBW;  % set draft at left boundary (m)
-			%		disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			%		disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Read ocean pickup file
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			fname=sprintf('pickup.save.%010i.data',niter); % the data filename
+			% }}}
+			% read pickup file, open new cells, write updated init files {{{
+			% read pickup file
+			fname=sprintf('pickup.save.%010i.data',modeltime); % the data filename
 			disp(['  reading ocean pickup file ' fname]);
          PickupData=binread(fname,8,[mit.mesh.Nx, mit.mesh.Ny, 6*mit.mesh.Nz+3]); % read the whole file
 			U=PickupData(:,:,(1:mit.mesh.Nz)+0*mit.mesh.Nz); % x component of velocity (m/s)
@@ -180,12 +140,9 @@ function runcouple(mdfile,mitfile)
 			T=PickupData(:,:,(1:mit.mesh.Nz)+2*mit.mesh.Nz); % Temperature state (deg C)
 			S=PickupData(:,:,(1:mit.mesh.Nz)+3*mit.mesh.Nz); % Salinity state (g/kg)
 			E=PickupData(:,:,(1)+6*mit.mesh.Nz); % free surface state (m)
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Open new cells as necessary
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% open new cells as necessary 
 			% find indices of locations where ice shelf retreated
-			fname=sprintf('hFacC.save.%010i.data',niter);
+			fname=sprintf('hFacC.save.%010i.data',modeltime);
 			disp(['  reading ocean hFacC file ' fname]);
 			hFacC=binread(fname,4,[mit.mesh.Nx, mit.mesh.Ny, mit.mesh.Nz]); % hFacC (m)
 			hCol=sum(hFacC,3); % water column height (m)
@@ -216,10 +173,7 @@ function runcouple(mdfile,mitfile)
 					T(im(i),jm(i),:)=temp_profile; % set salinity for new ocean column
 				end
 			end
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Write updated MITgcm files
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% write updated MITgcm files
 			disp('  writing updated ocean files');
 			% update restart files
 			binwrite(draft_file,newdraft,8);
@@ -228,51 +182,146 @@ function runcouple(mdfile,mitfile)
 			binwrite(theta_file,T,8);
 			binwrite(salt_file ,S,8);
 			binwrite(etan_file ,E,8);
+			% }}}
+			% update ./data files for fine deltaT relaxation run {{{
+			disp('  setting runtime options for relaxation run');
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
+			% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
 
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Update the data files
+			% ./data
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% the cal start time, model start time, and obcs all stay the same. the niter restarts at 0
-			% but we update the basetime so that the model knows where we are
-			newline=['  startTime=' num2str(modeltime) ','];
-			command=['sed "s/.*startTime.*/' newline '/" data > data.temp; mv data.temp data'];
-			system(command);
+			mit.inputdata.PARM{3} = struct();
+			% structure information
+			mit.inputdata.PARM{3}.header='PARM03';
+			mit.inputdata.PARM{3}.description='Time stepping parameters';
+			% Run Start and Duration
+			mit.inputdata.PARM{3}.nIter0      = 0;                             % starting timestep iteration number
+			mit.inputdata.PARM{3}.nEndIter    = relaxEndIter;                  % end timestep iteration number
+			mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_relax; % mitgcm deltaT (s)
+			mit.inputdata.PARM{3}.startTime   = modeltime;                     % run start time for this integration (s)
+			% Restart/Pickup Files
+			mit.inputdata.PARM{3}.pChkptFreq  = modeltime_cont;                % permanent pickup checkpoint file write interval (s)
+			mit.inputdata.PARM{3}.ChkptFreq   = 0;                             % temporary pickup checkpoint file write interval (s)
+			% Frequency/Amount of Output
+			mit.inputdata.PARM{3}.monitorFreq = modeltime_cont;       % interval to write monitor output - every coupled time step (s)
+			mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme
+         mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
+         mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state
 
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Run MITgcm
+			% input/data.diagnostics.relaxation
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			disp('  running MITgcm')
+			mit.inputdata.DIAG{1}.N(1).frequency = 0;
+			mit.inputdata.DIAG{1}.N(2).frequency = 0;
+			mit.inputdata.DIAG{1}.N(3).frequency = 0;
+
+			disp(mit.inputdata.PARM{3});
+
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% write data files
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			disp([' - Set runtime options in data file']);
+			write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
+
+			disp([' - Set runtime options in data.diagnostics file']);
+			write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
+
+
+			% }}}
+			% run MITgcm to end of relaxation time {{{
+			disp('  running MITgcm relaxation period')
 			tic
 			system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
 			toc
-			disp('  done MITgcm')
+			disp('  done MITgcm relaxation period')
 
 			% check if bad solve
 			[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
 			if ~isempty(r)
 				error('MITgcm bad solve: NaN in STDOUT. Ending run!');
 			end
+			% }}}
+			% update ./data files for coarse deltaT continuation run {{{
+			disp('  setting runtime options for continuation run');
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
+			% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
 
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			%Move files to time-corrected niter suffix
+			% ./data
 			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			disp('  saving output files to time-corrected niter')
-			modelIterEnd
-			niter_next
-			movefile(sprintf('pickup.%010i.data',modelIterEnd), sprintf('pickup.save.%010i.data',niter_next)); % pickup.data
-			movefile(sprintf('pickup.%010i.meta',modelIterEnd), sprintf('pickup.save.%010i.meta',niter_next)); % pickup.meta
-			movefile(sprintf('SHICE_fwFluxtave.%010i.data',modelIterEnd), sprintf('SHICE_fwFluxtave.save.%010i.data',niter_next)); % SHICE_fwFluxtave.data
-			movefile(sprintf('SHICE_fwFluxtave.%010i.meta',modelIterEnd), sprintf('SHICE_fwFluxtave.save.%010i.meta',niter_next)); % SHICE_fwFluxtave.meta
+			mit.inputdata.PARM{3} = struct();
+			% structure information
+			mit.inputdata.PARM{3}.header='PARM03';
+			mit.inputdata.PARM{3}.description='Time stepping parameters';
+			% Run Start and Duration
+			mit.inputdata.PARM{3}.nIter0      = 0;                            % starting timestep iteration number
+			mit.inputdata.PARM{3}.nEndIter    = contEndIter;                  % end timestep iteration number
+			mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_cont; % mitgcm deltaT (s)
+			mit.inputdata.PARM{3}.startTime   = modeltime_cont;               % run start time for this integration (s)
+			% Restart/Pickup Files
+			mit.inputdata.PARM{3}.pChkptFreq  = modeltime_next;       % permanent pickup checkpoint file write interval (s)
+			mit.inputdata.PARM{3}.ChkptFreq   = 0;                            % temporary pickup checkpoint file write interval (s)
+			mit.inputdata.PARM{3}.pickupSuff  = sprintf('%010i',relaxEndIter); % force run to use pickups and read files with this suffix
+			% Frequency/Amount of Output
+			mit.inputdata.PARM{3}.monitorFreq     = modeltime_next;           % interval to write monitor output - every coupled time step (s)
+			mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme                    
+			mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
+			mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state 
+
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% input/data.diagnostics.relaxation
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			mit.inputdata.DIAG{1}.N(1).frequency = 0;
+			mit.inputdata.DIAG{1}.N(2).frequency = 0;
+			mit.inputdata.DIAG{1}.N(3).frequency = modeltime_next;
+
+			disp(mit.inputdata.PARM{3});
+
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			% write data file
+			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			disp([' - Set runtime options in data file']);
+			write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
+
+			disp([' - Set runtime options in data.diagnostics file']);
+			write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
+			% }}}
+			% run MITgcm until end of coupled time step {{{
+			disp('  running MITgcm continuation')
+			tic
+			system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
+			toc
+			disp('  done MITgcm continuation')
+
+			% check if bad solve
+			[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
+			if ~isempty(r)
+				error('MITgcm bad solve: NaN in STDOUT. Ending run!');
+			end
+			% }}}
+			% move files to modeltime suffix {{{
+			disp('  saving output files to modeltime suffix')
+
+			movefile(sprintf('pickup.%010i.data',contEndIter), sprintf('pickup.save.%010i.data',modeltime_next)); % pickup.data
+			movefile(sprintf('pickup.%010i.meta',contEndIter), sprintf('pickup.save.%010i.meta',modeltime_next)); % pickup.meta
+			movefile(sprintf('SHICE_fwFluxtave.%010i.data',contEndIter), sprintf('SHICE_fwFluxtave.save.%010i.data',modeltime_next)); % SHICE_fwFluxtave.data
+			movefile(sprintf('SHICE_fwFluxtave.%010i.meta',contEndIter), sprintf('SHICE_fwFluxtave.save.%010i.meta',modeltime_next)); % SHICE_fwFluxtave.meta
 			% save the hFacC and draft files
-			movefile('hFacC.data', sprintf('hFacC.save.%010i.data',niter_next)); % hFacC.data
-			movefile('hFacC.meta', sprintf('hFacC.save.%010i.meta',niter_next)); % hFacC.meta
-			movefile(draft_file, sprintf('draft.save.%010i.bin',niter_next)); % draft.bin
-		end
-
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		%Get melt from MITgcm
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		melt_fname=sprintf('SHICE_fwFluxtave.save.%010i.data',niter_next); % melt file
+			movefile('hFacC.data', sprintf('hFacC.save.%010i.data',modeltime_next)); % hFacC.data
+			movefile('hFacC.meta', sprintf('hFacC.save.%010i.meta',modeltime_next)); % hFacC.meta
+			movefile(draft_file,   sprintf('draft.save.%010i.bin', modeltime_next)); % draft.bin
+			% delete the relaxation pickup file
+			delete(sprintf('pickup.%010i.data',relaxEndIter));
+			delete(sprintf('pickup.%010i.meta',relaxEndIter));
+			% }}}
+		%end
+		% }}}
+		% ice model {{{
+		% get melt from MITgcm {{{
+		melt_fname=sprintf('SHICE_fwFluxtave.save.%010i.data',modeltime_next); % melt file
 		disp(['  reading melt from MITgcm file: ' melt_fname])
 		meltq_mitgcm = binread(melt_fname,4,[mit.mesh.Nx, mit.mesh.Ny]); % melt flux at cell centers (kg/m^2/s)
 		meltq_mitgcm=permute(meltq_mitgcm,[2,1]);  % put in ROW COL order (kg/m^2/s)
@@ -280,30 +329,26 @@ function runcouple(mdfile,mitfile)
 
 		%Set basal melting rate fields
 		md.basalforcings.floatingice_melting_rate=-meltq_issm*md.constants.yts/md.materials.rho_ice; % melt rate at element vertices (m/yr)
-
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-		%Run ISSM
-		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% }}}
+		% run ISSM {{{
 		disp('  running ISSM')
 		%Solve
-		md.miscellaneous.name = sprintf('%s%010i',md_prefix,niter_next);
+		md.miscellaneous.name = sprintf('%s%010i',md_prefix,modeltime_next);
 		md=solve(md,'transient');
 		disp('  done ISSM')
-
-		%Get the change in ice shelf draft from ISSM
+		% }}}
+		% save ISSM results {{{
+		% get the change in ice shelf draft from ISSM
 		deltaBase = md.results.TransientSolution(end).Base - md.geometry.base; % m
-
-
-		%Save ISSM results
-		fname = sprintf('issmDiag.%010i.mat', niter_next);
+		% save to file
+		fname = sprintf('issmDiag.%010i.mat', modeltime_next);
 		disp(['  saving ISSM results to ' fname])
 		results = md.results.TransientSolution(end);
-		results.step = (n+1);
-		results.time = (n+1)*mit.timestepping.coupledTimeStep;
+		results.time = modeltime_next;
 		results.deltaBase = deltaBase;
 		save(fname,'results');
-
-		%Reset model
+		% }}}
+		% reinitialize ISSM from results {{{
 		disp('  reinitializing ISSM from results.TransientSolution')
 		md.geometry.base             = md.results.TransientSolution(end).Base;
 		md.geometry.surface          = md.results.TransientSolution(end).Surface;
@@ -317,9 +362,12 @@ function runcouple(mdfile,mitfile)
 		%Clear execution folder in ISSM to avoid going over quota
 		command = ['rm -r ' md.cluster.executionpath '/' md_prefix '*'];
 		system(command);
+		% }}}
+		% }}}
 	end
-
-	% subfunctions
+	% }}}
+end
+% subfunctions
 function D=binread(fname,prec,arrsize) % {{{
 	% read data from binary file into a matlab array D.
 	% Assumes big-endian architecture, and given precision
@@ -361,6 +409,98 @@ function q=binwrite(fname,D,prec) % {{{
 	end
 	fclose(fid);
 end % }}}
+function write_datafile(fname,C,head) % {{{
+	% WRITE_DATAFILE writes structures in C to fname {{{
+	% INPUT: fname   string file to write
+	%        C       cell array of structures (P) to write
+	%        head    string of file header
+	%
+	% OUTPUT: writes to file with the following form:
+	%
+	% # head
+	% # C{1}.description
+	%  &C{1}.header
+	%  C{1}.field1=value1,
+	%  C{1}.field2=value2,
+	%  ...
+	%  &
+	%
+	% # C{2}.description
+	%  &C{2}.header
+	%  C{2}.field1=value1,
+	%  C{2}.field2=value2,
+	%  ...
+	%  &
+	%  ...
+	% }}}
+	disp(['    writing namelist file to ' fname])
+	fileID = fopen(fname,'w');
+	fprintf(fileID,'# %s\n',head); % write descriptive file header
+
+	% loop through structures in C
+	for i=1:length(C)
+		% write a descriptive comment if it exists {{{
+		if isfield(C{i},'description')
+			if iscell(C{i}.description)
+				fprintf(fileID,'# %s\n',C{i}.description{:}); % write multi-line description
+			else
+				fprintf(fileID,'# %s\n',C{i}.description); % write description
+			end
+			C{i}=rmfield(C{i},'description'); % do not write as field
+		end % }}}
+		% write PARM header {{{
+		fprintf(fileID,' &%s\n',C{i}.header); % write header
+		C{i}=rmfield(C{i},'header'); % do not write as field
+		% }}}
+		% write parameter fields and end section {{{
+		if isfield(C{i},'N') % if diagnostic fields
+			writediagfields(fileID,C{i}.N);
+			C{i}=rmfield(C{i},'N'); % done with diag fields
+		end
+		writefields(fileID,C{i}); % write non-diagnostic fields
+		fprintf(fileID,' &\n\n'); % end section
+		% }}}
+	end
+	fclose(fileID);
+end % }}}
+function writefields(fileID,P) % {{{
+	% WRITEFIELDS writes each field in P to fileID as a new line
+	%  Each line takes the form ' fieldname=value,'
+	fields=fieldnames(P);
+	for i=1:length(fields)
+		val=getfield(P,fields{i});
+		fprintf(fileID,'  %s=%s,\n',fields{i},num2str(val));
+	end
+end  % }}}
+function writediagfields(fileID,N) % {{{
+	% WRITEDIAGFIELDS writes diagnostic fields for each output stream
+	% INPUT: N is a struct. array with an element for each output stream n
+	%  Each line takes the form fieldname(n)=value except for
+	%  'fields' with take the form fields(1:length,n)='fields{1}', 'fields{2}', ...
+
+	% loop over each output stream
+	for n=1:length(N)
+		subfields=fieldnames(N(n));
+		% loop over each subfield
+		for i=1:length(subfields)
+			switch subfields{i}
+				case 'fields'
+					LHS=[subfields{i} '(1:' num2str(length(N(n).fields)) ',' num2str(n) ')'];
+					dfields=getfield(N(n),subfields{i});
+					dfields=strcat('''',dfields,''', ');
+					RHS=strcat(dfields{:});
+					fprintf(fileID,'  %s=%s\n',LHS,RHS); % write to file
+				case 'levels'
+					error('diag. levels not supported');
+				otherwise
+					LHS=[subfields{i} '(' num2str(n) ')'];
+					RHS=num2str(getfield(N(n),subfields{i}));
+					fprintf(fileID,'  %s=%s,\n',LHS,RHS); % write to file
+			end
+		end
+		fprintf(fileID,'\n'); % line break
+	end
+end % }}}
 function dispMITxISSM() % {{{
 	%DISPMITXISSM prints an ascii graphic to terminal output
 	disp(' __      __ _____ _______                    _     _  _____   _____ ____ __      __ ')
@@ -372,4 +512,3 @@ function dispMITxISSM() % {{{
 	disp('                        __/ |                ')
 	disp('                       |___/                 ')
 end % }}}
-end

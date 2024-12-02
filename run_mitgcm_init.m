@@ -1,4 +1,4 @@
-steps=[8:9];
+steps=[10];
 
 % PROPHET Amundsen Sea Coupling
 % Outline:
@@ -11,7 +11,7 @@ steps=[8:9];
 %   'Paris2C' % ensemble average forcings from Paris 2
 %   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
-experiment.name='RCP85';
+experiment.name='Paris2C';
 experiment.init='MITgcm_initialization';
 mit_dT      = 100; % s
 coupling_dT = 15*24*60*60; % s
@@ -187,9 +187,29 @@ if perform(org,'MeshInit'), % {{{
 	%dz=25;    % ver. resolution in z (m)
 
 	% SETUP:
-	%	5 nodes, 140 processes, 10x14 tiles, 25x30 cells, 300E3x505E3 m domain
-	sNx=25;  % Number of X points in tile
-	sNy=30;  % Number of Y points in tile
+%	%	5 nodes, 140 processes, 10x14 tiles, 25x30 cells, 300E3x505E3 m domain
+%	sNx=25;  % Number of X points in tile
+%	sNy=30;  % Number of Y points in tile
+
+%	%  5 nodes, 70 processes, 5x14 tiles, 50x30 cells
+%	sNx=50;  % Number of X points in tile
+%	sNy=30;  % Number of Y points in tile
+
+%	%	10 nodes, 280 processes, 10x28 tiles, 25x15 cells, 300E3x505E3 m domain
+%	sNx=25;  % Number of X points in tile
+%	sNy=15;  % Number of Y points in tile
+
+%	%	4 nodes, 100 processes, 10x10 tiles, 25x42 cells, 300E3x505E3 m domain
+%	sNx=25;  % Number of X points in tile
+%	sNy=42;  % Number of Y points in tile
+
+%	%	6 nodes, 150 processes, 10x15 tiles, 25x28 cells, 300E3x505E3 m domain
+%	sNx=25;  % Number of X points in tile
+%	sNy=28;  % Number of Y points in tile
+
+	%	7 nodes, 175 processes, 5x35 tiles, 50x12 cells, 300E3x505E3 m domain
+	sNx=50;  % Number of X points in tile
+	sNy=12;  % Number of Y points in tile
 
 	Nx=Lx/dx;      % number of cells in x
 	Ny=Ly/dy;      % number of cells in y
@@ -954,12 +974,8 @@ if perform(org,'CompileMITgcm'), % {{{
 	SZ.reffile=fullfile(mitgcm_dir,'model/inc/SIZE.h'); % MITgcm example file
 	% define SZ structure fields
 	% note domain decomposition must follow: Nx= sNx*nSx*nPx, Ny = sNy*nSy*nPy
-	SZ.sNx=mit.mesh.sNx;   % Number of X points in tile. (140 proc)
-	SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile. (140 proc)            
-	%SZ.sNx=250;   % Number of X points in tile (one proc)
-	%SZ.sNy=420;   % Number of Y points in tile (one proc)
-	%SZ.sNx=50;   % Number of X points in tile (75 proc)
-	%SZ.sNy=28;   % Number of Y points in tile (75 proc)
+	SZ.sNx=mit.mesh.sNx;   % Number of X points in tile. 
+	SZ.sNy=mit.mesh.sNy;   % Number of Y points in tile.
 	SZ.OLx=3;   % Tile overlap extent in X.                
 	SZ.OLy=3;   % Tile overlap extent in Y.                
 	SZ.nSx=1;   % Number of tiles per process in X.        
@@ -1093,8 +1109,8 @@ if perform(org,'CompileMITgcm'), % {{{
 		command=[genmake2 ' -mpi -mo ../code -optfile ' optfile ' -rd ' mitgcm_dir];
 		system(command); % generate Makefile
 		system('make CLEAN');  % prepare for new compilation
-		system('make depend'); % create symbolic links from the local directory to the source file locations
-		system('make');        % compile code and create executable file mitgcmuv
+		system('make -j10 depend'); % create symbolic links from the local directory to the source file locations
+		system('make -j10');        % compile code and create executable file mitgcmuv
 	end % }}}	
 	cd(initdir);
 end % }}}
@@ -1340,9 +1356,10 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	disp(' - Setting timestepping options');
 	mit.timestepping.ispickup         = 0;                                                         % are we running a pickup or an initial coupling [0,1]
 	mit.timestepping.coupled_basetime = mit.timestepping.spinupduration;                           % the model time that we are starting coupling from (s)
+	mit.timestepping.coupled_endtime  = 90*mit.timestepping.y2s;                                   % the end model time that we are aiming for (s)
 	mit.timestepping.startTime        = mit.timestepping.coupled_basetime;                         % modeltime of the start of the simulation (s)
 	mit.timestepping.deltaT_coupled   = coupling_dT;                                               % coupling time step (s)
-	mit.timestepping.coupledT         = 60*24*60*60;                                               % duration of coupling simulation (s)
+	mit.timestepping.coupledT         = mit.timestepping.coupled_endtime;                          % duration of coupling simulation (s)
 	mit.timestepping.nsteps           = mit.timestepping.coupledT/mit.timestepping.deltaT_coupled; % number of coupled time steps to take
 	mit.timestepping.relaxT           = 1*60*60;                                                   % duration of relaxation time after coupling (s)
 	mit.timestepping.deltaT_relax     = 10;                                                        % small deltaT to use for relaxation run (s)
@@ -1392,7 +1409,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	builddir = fullfile(initdir,'build'); % initalization directory where model was compiled
 	inputdir=fullfile(initdir,'input'); % initialization directory for runtime input options
 	runoceandir = fullfile(expdir,'runocean'); % run directory for the ocean model spinup
-	runcoupleddir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory for the coupled model
+	runcoupleddir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory
 	% rename previous run directory and create new one
 	oldruncoupleddir=[runcoupleddir '.old'];
 	if exist(oldruncoupleddir), rmdir(oldruncoupleddir,'s'); end
@@ -1450,7 +1467,7 @@ if perform(org,'RuntimeOptionsCoupled') % {{{
 	save(fullfile(runcoupleddir,'RuntimeOptionsCoupled'),'mit');
 end % }}}
 if perform(org,'RunCoupled') % {{{
-	rundir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory for the coupled model
+	rundir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory
 	mitfile=fullfile(rundir,'RuntimeOptionsCoupled.mat');
 	%rundir = fullfile(expdir,'runcoupled'); % which experimen directory to run
 	mit=loadmodel(mitfile);
@@ -1460,27 +1477,28 @@ if perform(org,'RunCoupled') % {{{
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
 	grouplist = 's2950'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
-	%queuename = 'long'; % which queue to submit to (long or devel)
-	%walltime = duration(48,0,0); % walltime to request
-	queuename = 'devel'; % which queue to submit to (long or devel)
-	walltime = duration(1,0,0); % walltime to request
+	queuename = 'long'; % which queue to submit to (long or devel)
+	%queuename = 'devel'; % which queue to submit to (long or devel)
+	walltime = duration(4*24+11,0,0); % walltime to request
 	%% write the .queue file
-	%fname = write_queuefile(rundir,grouplist,npMIT,...
-	%	'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
-	%fprintf('Submitting queue file:   ')
-	%command=['qsub ' fullfile(rundir,fname)];
-	%system(command);	
+	fname = write_queuefile(rundir,grouplist,npMIT,...
+		'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
+	fprintf('Submitting queue file:   ')
+	command=['qsub ' fullfile(rundir,fname)];
+	system(command);	
 	% if interactive!!
-	cd(rundir);
-	%runalone(mdfile,mitfile);
-	addpath(fullfile(proph_dir,'runcouple'));
-	%runcouple(mdfile,mitfile);
-	runcouple_beta(mdfile,mitfile);
+	%cd(rundir);
+	%%runalone(mdfile,mitfile);
+	%addpath(fullfile(proph_dir,'runcouple'));
+	%%runcouple(mdfile,mitfile);
+	%runcouple_beta(mdfile,mitfile);
 end % }}}
 if perform(org,'RunPickup') % {{{
-	mit=load(org,'RuntimeOptionsCoupled');
+	rundir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory
+	mit=loadmodel(fullfile(rundir,'RuntimeOptionsCoupled'));
 
-	modeltime_pickup = 0;
+	modeltime_pickup = 839808000; % (s)
+
 	% TIME STEPPING
    % During the coupled phase our ocean model does two runs per coupled step:
    %     1) "Relaxation run"
@@ -1497,28 +1515,26 @@ if perform(org,'RunPickup') % {{{
    mit.timestepping.ispickup         = 1;                                                         % are we running a pickup or an initial coupling [0,1]
    mit.timestepping.startTime        = modeltime_pickup;                                          % modeltime of the start of the simulation (s)
    mit.timestepping.nsteps           = mit.timestepping.coupledT/mit.timestepping.deltaT_coupled; % number of coupled time steps to take
-   mit.timestepping.relaxT           = 1*60*60;                                                   % duration of relaxation time after coupling (s)
-   mit.timestepping.deltaT_relax     = 10;                                                        % small deltaT to use for relaxation run (s)
+   mit.timestepping.relaxT           = 12*60*60;                                                   % duration of relaxation time after coupling (s)
+   mit.timestepping.deltaT_relax     = 5;                                                        % small deltaT to use for relaxation run (s)
    mit.timestepping.contT            = mit.timestepping.deltaT_coupled-mit.timestepping.relaxT;  % duration of continuation run after relaxation (s)
    mit.timestepping.deltaT_cont      = 100;                                                       % large deltaT to use for continuation run (s)
-
 
 	% print settings
    disp('mit.timestepping:');
    disp(mit.timestepping);
 
 	% save mit structure
-	savedata(org,mit);
+	mitfile = fullfile(rundir,'RunPickup.mat');
+	save(mitfile,'mit');
 
 	% set run parameters for PBS queue file
-	rundir = fullfile(expdir,'runcoupled'); % which experimen directory to run
 	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
-	mitfile = fullfile(org.repository,[org.prefix,'RunPickup.mat']);
 	grouplist = 's2950'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 	queuename = 'long'; % which queue to submit to (long or devel)
-	walltime = duration(120,0,0); % walltime to request
+	walltime = duration(5*24,0,0); % walltime to request
 	%queuename = 'devel'; % which queue to submit to (long or devel)
 	%walltime = duration(1,0,0); % walltime to request
 	% write the .queue file
@@ -1527,11 +1543,10 @@ if perform(org,'RunPickup') % {{{
 	fprintf('Submitting queue file:   ')
 	command=['qsub ' fullfile(rundir,fname)];
 	system(command);	
-	%% if interactive!!
+	% if interactive!!
 	%cd(rundir);
-	%%runalone(mdfile,mitfile);
 	%addpath(fullfile(proph_dir,'runcouple'));
-	%runcouple(mdfile,mitfile);
+	%runcouple_beta(mdfile,mitfile);
 end % }}}
 
 % Move back to root directory
@@ -1868,7 +1883,7 @@ function fname=write_queuefile(rundir,grouplist,ncpus,varargin) % {{{
 		% determine how many cpus to use per node
 		switch nodemodel
 			case 'bro' % broadwell node
-				cpupernode = 28;
+				cpupernode = 25;
 			otherwise 
 				error(['nodemodel ' nodemodel ' is not supported by this queue script yet.']);
 		end
