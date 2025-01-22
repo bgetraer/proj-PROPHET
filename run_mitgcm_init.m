@@ -11,6 +11,7 @@ steps=[10];
 %   'Paris2C' % ensemble average forcings from Paris 2
 %   'CLIM'    % monthly climatology 2001-2012 from Paris 2
 
+%experiment.name='RCP85';
 experiment.name='Paris2C';
 experiment.init='MITgcm_initialization';
 mit_dT      = 100; % s
@@ -1497,7 +1498,8 @@ if perform(org,'RunPickup') % {{{
 	rundir = fullfile(expdir,sprintf('runcoupled_dt%03i_ct%07i',mit_dT,coupling_dT)); % run directory
 	mit=loadmodel(fullfile(rundir,'RuntimeOptionsCoupled'));
 
-	modeltime_pickup = 839808000; % (s)
+	%modeltime_pickup = 1680912000; % (s) RCP85
+	modeltime_pickup = 1862352000; % (s) PARIS2C
 
 	% TIME STEPPING
    % During the coupled phase our ocean model does two runs per coupled step:
@@ -1516,7 +1518,7 @@ if perform(org,'RunPickup') % {{{
    mit.timestepping.startTime        = modeltime_pickup;                                          % modeltime of the start of the simulation (s)
    mit.timestepping.nsteps           = mit.timestepping.coupledT/mit.timestepping.deltaT_coupled; % number of coupled time steps to take
    mit.timestepping.relaxT           = 12*60*60;                                                   % duration of relaxation time after coupling (s)
-   mit.timestepping.deltaT_relax     = 5;                                                        % small deltaT to use for relaxation run (s)
+   mit.timestepping.deltaT_relax     = 2;                                                        % small deltaT to use for relaxation run (s)
    mit.timestepping.contT            = mit.timestepping.deltaT_coupled-mit.timestepping.relaxT;  % duration of continuation run after relaxation (s)
    mit.timestepping.deltaT_cont      = 100;                                                       % large deltaT to use for continuation run (s)
 
@@ -1528,25 +1530,25 @@ if perform(org,'RunPickup') % {{{
 	mitfile = fullfile(rundir,'RunPickup.mat');
 	save(mitfile,'mit');
 
-	% set run parameters for PBS queue file
-	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
+	%% set run parameters for PBS queue file
+	%mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
-	grouplist = 's2950'; % account on Pleiades
-	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
-	queuename = 'long'; % which queue to submit to (long or devel)
-	walltime = duration(5*24,0,0); % walltime to request
-	%queuename = 'devel'; % which queue to submit to (long or devel)
-	%walltime = duration(1,0,0); % walltime to request
-	% write the .queue file
-	fname = write_queuefile(rundir,grouplist,npMIT,...
-		'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
-	fprintf('Submitting queue file:   ')
-	command=['qsub ' fullfile(rundir,fname)];
-	system(command);	
+	%grouplist = 's2950'; % account on Pleiades
+	%npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
+	%queuename = 'long'; % which queue to submit to (long or devel)
+	%walltime = duration(40,0,0); % walltime to request
+	%%queuename = 'devel'; % which queue to submit to (long or devel)
+	%%walltime = duration(1,0,0); % walltime to request
+	%% write the .queue file
+	%fname = write_queuefile(rundir,grouplist,npMIT,...
+	%	'queuename',queuename,'walltime',walltime,'iscoupled',1,'mccdir',mccdir,'mccargin',{mdfile,mitfile}); % returns the name of the .queue file
+	%fprintf('Submitting queue file:   ')
+	%command=['qsub ' fullfile(rundir,fname)];
+	%system(command);	
 	% if interactive!!
-	%cd(rundir);
-	%addpath(fullfile(proph_dir,'runcouple'));
-	%runcouple_beta(mdfile,mitfile);
+	cd(rundir);
+	addpath(fullfile(proph_dir,'runcouple'));
+	runcouple(mdfile,mitfile);
 end % }}}
 
 % Move back to root directory
