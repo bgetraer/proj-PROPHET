@@ -1,3 +1,6 @@
 experiments/*
+climateforcings/data/*
+climateforcings/naughten2023_data/*
 *.mat
 */mccfiles/*
+
