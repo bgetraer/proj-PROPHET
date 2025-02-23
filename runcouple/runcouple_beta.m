@@ -41,7 +41,7 @@ function runcouple(mdfile,mitfile)
 
 	% Model execution parameters
 	nprocs=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm and ISSM
-	md.cluster=generic('name',oshostname(),'np',nprocs); % set number of processors for ISSM.
+	md.cluster=generic('name',oshostname(),'np',min(nprocs,70)); % set number of processors for ISSM.
 	md.timestepping.final_time=mit.timestepping.deltaT_coupled./md.constants.yts; % how long to run ISSM for (y)
 	md_prefix = 'runcouple'; % the ISSM model name prefix for execution files
 
@@ -56,7 +56,6 @@ function runcouple(mdfile,mitfile)
 	% modeltime is the MITgcm modeltime starting from the calendar start date (2010)
 	% coupled_basetime is the MITgcm modeltime that we start the coupling at (2013)
 	% basetime is the MITgcm modeltime that the current model starts at 
-	relaxEndIter = mit.timestepping.relaxT/mit.timestepping.deltaT_relax;        % the final timestep iteration number of each relaxation run
 	contEndIter  = mit.timestepping.contT/mit.timestepping.deltaT_cont;          % the final timestep iteration number of each relaxation run
 	% }}}
 	% initial parameters and fields {{{
@@ -82,8 +81,8 @@ function runcouple(mdfile,mitfile)
 	end
 	% }}}
 	% loop coupled steps {{{
-	for n=-1:(mit.timestepping.nsteps-1)
-	%for n=0:(mit.timestepping.nsteps-1)
+	%for n=-1:(mit.timestepping.nsteps-1)
+	for n=0:(mit.timestepping.nsteps-1)
 		% update timekeeping {{{
 		disp(['COUPLED STEP ' num2str(n+1) '/' num2str(mit.timestepping.nsteps)]);
 		modeltime       = mit.timestepping.startTime + (n)*mit.timestepping.deltaT_coupled; % the start modeltime of this coupled step
@@ -95,7 +94,7 @@ function runcouple(mdfile,mitfile)
 		disp(sprintf('elapsed time: %i yr, %s dd:mm:hh:ss',elapse_y,string(seconds(elapse_remsec),'dd:hh:mm:ss')));
 		% }}}
 		% ocean model {{{
-		if modeltime>=mit.timestepping.coupled_basetime
+		%if modeltime>=mit.timestepping.coupled_basetime
 			% update draft {{{
 			fname=sprintf('draft.save.%010i.bin',modeltime);
 			disp(['  reading previous draft file ' fname]);
@@ -183,125 +182,140 @@ function runcouple(mdfile,mitfile)
 			binwrite(salt_file ,S,8);
 			binwrite(etan_file ,E,8);
 			% }}}
-			% update ./data files for fine deltaT relaxation run {{{
-			disp('  setting runtime options for relaxation run');
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
-			% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
+			donewithocean=0; % initialize the done with ocean flag
+			niter=0;         % initialize the relaxation niter
+			relaxT=mit.timestepping.relaxT; % initial relaxation timescale (s)
+	      relaxEndIter = relaxT/mit.timestepping.deltaT_relax; % the final timestep iteration number of each relaxation run
+			startTime = modeltime;
+			while donewithocean==0
+				% update ./data files for fine deltaT relaxation run {{{
+				disp('  setting runtime options for relaxation run');
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
+				% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
 
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% ./data
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			mit.inputdata.PARM{3} = struct();
-			% structure information
-			mit.inputdata.PARM{3}.header='PARM03';
-			mit.inputdata.PARM{3}.description='Time stepping parameters';
-			% Run Start and Duration
-			mit.inputdata.PARM{3}.nIter0      = 0;                             % starting timestep iteration number
-			mit.inputdata.PARM{3}.nEndIter    = relaxEndIter;                  % end timestep iteration number
-			mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_relax; % mitgcm deltaT (s)
-			mit.inputdata.PARM{3}.startTime   = modeltime;                     % run start time for this integration (s)
-			% Restart/Pickup Files
-			mit.inputdata.PARM{3}.pChkptFreq  = modeltime_cont;                % permanent pickup checkpoint file write interval (s)
-			mit.inputdata.PARM{3}.ChkptFreq   = 0;                             % temporary pickup checkpoint file write interval (s)
-			% Frequency/Amount of Output
-			mit.inputdata.PARM{3}.monitorFreq = modeltime_cont;       % interval to write monitor output - every coupled time step (s)
-			mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme
-         mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
-         mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% ./data
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				mit.inputdata.PARM{3} = struct();
+				% structure information
+				mit.inputdata.PARM{3}.header='PARM03';
+				mit.inputdata.PARM{3}.description='Time stepping parameters';
+				% Run Start and Duration
+				mit.inputdata.PARM{3}.nIter0      = niter;                         % starting timestep iteration number
+				mit.inputdata.PARM{3}.nEndIter    = relaxEndIter;                  % end timestep iteration number
+				mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_relax; % mitgcm deltaT (s)
+				mit.inputdata.PARM{3}.startTime   = startTime;                     % run start time for this integration (s)
+				% Restart/Pickup Files
+				mit.inputdata.PARM{3}.pChkptFreq  = modeltime_cont;                % permanent pickup checkpoint file write interval (s)
+				mit.inputdata.PARM{3}.ChkptFreq   = 0;                             % temporary pickup checkpoint file write interval (s)
+				% Frequency/Amount of Output
+				mit.inputdata.PARM{3}.monitorFreq = modeltime_cont;       % interval to write monitor output - every coupled time step (s)
+				mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme
+				mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
+				mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state
 
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% input/data.diagnostics.relaxation
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			mit.inputdata.DIAG{1}.N(1).frequency = 0;
-			mit.inputdata.DIAG{1}.N(2).frequency = 0;
-			mit.inputdata.DIAG{1}.N(3).frequency = 0;
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% input/data.diagnostics.relaxation
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				mit.inputdata.DIAG{1}.N(1).frequency = 0;
+				mit.inputdata.DIAG{1}.N(2).frequency = 0;
+				mit.inputdata.DIAG{1}.N(3).frequency = 0;
 
-			disp(mit.inputdata.PARM{3});
+				disp(mit.inputdata.PARM{3});
 
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% write data files
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			disp([' - Set runtime options in data file']);
-			write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% write data files
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				disp([' - Set runtime options in data file']);
+				write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
+1
+				disp([' - Set runtime options in data.diagnostics file']);
+				write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
 
-			disp([' - Set runtime options in data.diagnostics file']);
-			write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
 
+				% }}}
+				% run MITgcm to end of relaxation time {{{
+				disp('  running MITgcm relaxation period')
+				tic
+				system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
+				toc
+				disp('  done MITgcm relaxation period')
 
+				% check if bad solve
+				[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
+				if ~isempty(r)
+					error('MITgcm bad solve: NaN in STDOUT. Ending run!');
+				end
+				% }}}
+				% update ./data files for coarse deltaT continuation run {{{
+				disp('  setting runtime options for continuation run');
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
+				% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
+
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% ./data
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				mit.inputdata.PARM{3} = struct();
+				% structure information
+				mit.inputdata.PARM{3}.header='PARM03';
+				mit.inputdata.PARM{3}.description='Time stepping parameters';
+				% Run Start and Duration
+				mit.inputdata.PARM{3}.nIter0      = 0;                            % starting timestep iteration number
+				mit.inputdata.PARM{3}.nEndIter    = contEndIter;                  % end timestep iteration number
+				mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_cont; % mitgcm deltaT (s)
+				mit.inputdata.PARM{3}.startTime   = modeltime_cont;               % run start time for this integration (s)
+				% Restart/Pickup Files
+				mit.inputdata.PARM{3}.pChkptFreq  = modeltime_next;       % permanent pickup checkpoint file write interval (s)
+				mit.inputdata.PARM{3}.ChkptFreq   = 0;                            % temporary pickup checkpoint file write interval (s)
+				mit.inputdata.PARM{3}.pickupSuff  = sprintf('%010i',relaxEndIter); % force run to use pickups and read files with this suffix
+				% Frequency/Amount of Output
+				mit.inputdata.PARM{3}.monitorFreq     = modeltime_next;           % interval to write monitor output - every coupled time step (s)
+				mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme                    
+				mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
+				mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state 
+
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% input/data.diagnostics.relaxation
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				mit.inputdata.DIAG{1}.N(1).frequency = 0;
+				mit.inputdata.DIAG{1}.N(2).frequency = 0;
+				mit.inputdata.DIAG{1}.N(3).frequency = modeltime_next;
+
+				disp(mit.inputdata.PARM{3});
+
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				% write data file
+				%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+				disp([' - Set runtime options in data file']);
+				write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
+
+				disp([' - Set runtime options in data.diagnostics file']);
+				write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
+				% }}}
+				% run MITgcm until end of coupled time step {{{
+				disp('  running MITgcm continuation')
+				tic
+				system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
+				toc
+				disp('  done MITgcm continuation')
+
+				% check if bad solve
+				[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
+				if ~isempty(r)
+					warning('MITgcm bad solve: NaN in STDOUT. Continue relaxation!');
+					niter=relaxEndIter; % update niter
+					startTime = startTime+relaxT; % update startTime of the model (s)
+					relaxT=relaxT + 6*60*60; % add six hours to relaxation timescale (s)
+					
+					relaxEndIter = relaxT/mit.timestepping.deltaT_relax; % the final timestep iteration number of each relaxation run
+
+				else 
+					donewithocean=1;
+				end
 			% }}}
-			% run MITgcm to end of relaxation time {{{
-			disp('  running MITgcm relaxation period')
-			tic
-			system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
-			toc
-			disp('  done MITgcm relaxation period')
-
-			% check if bad solve
-			[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
-			if ~isempty(r)
-				error('MITgcm bad solve: NaN in STDOUT. Ending run!');
 			end
-			% }}}
-			% update ./data files for coarse deltaT continuation run {{{
-			disp('  setting runtime options for continuation run');
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% I am defining these with startTime and nIter0 because I want to start from nIter0=0 but with
-			% a modeltime of the correct calendar. The cal start time, and obcs all stay the same.
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% ./data
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			mit.inputdata.PARM{3} = struct();
-			% structure information
-			mit.inputdata.PARM{3}.header='PARM03';
-			mit.inputdata.PARM{3}.description='Time stepping parameters';
-			% Run Start and Duration
-			mit.inputdata.PARM{3}.nIter0      = 0;                            % starting timestep iteration number
-			mit.inputdata.PARM{3}.nEndIter    = contEndIter;                  % end timestep iteration number
-			mit.inputdata.PARM{3}.deltaT      = mit.timestepping.deltaT_cont; % mitgcm deltaT (s)
-			mit.inputdata.PARM{3}.startTime   = modeltime_cont;               % run start time for this integration (s)
-			% Restart/Pickup Files
-			mit.inputdata.PARM{3}.pChkptFreq  = modeltime_next;       % permanent pickup checkpoint file write interval (s)
-			mit.inputdata.PARM{3}.ChkptFreq   = 0;                            % temporary pickup checkpoint file write interval (s)
-			mit.inputdata.PARM{3}.pickupSuff  = sprintf('%010i',relaxEndIter); % force run to use pickups and read files with this suffix
-			% Frequency/Amount of Output
-			mit.inputdata.PARM{3}.monitorFreq     = modeltime_next;           % interval to write monitor output - every coupled time step (s)
-			mit.inputdata.PARM{3}.cAdjFreq        = -1;                       % frequency of convective adj. scheme                    
-			mit.inputdata.PARM{3}.monitorSelect   = 1;                        % group of monitor variables to output
-			mit.inputdata.PARM{3}.dumpInitAndLast = '.FALSE.';                % write out initial and last iteration model state 
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% input/data.diagnostics.relaxation
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			mit.inputdata.DIAG{1}.N(1).frequency = 0;
-			mit.inputdata.DIAG{1}.N(2).frequency = 0;
-			mit.inputdata.DIAG{1}.N(3).frequency = modeltime_next;
-
-			disp(mit.inputdata.PARM{3});
-
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			% write data file
-			%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-			disp([' - Set runtime options in data file']);
-			write_datafile('data', mit.inputdata.PARM, 'MODEL PARAMETERS');
-
-			disp([' - Set runtime options in data.diagnostics file']);
-			write_datafile('data.diagnostics', mit.inputdata.DIAG, 'DIAGNOSTICS RUNTIME PARAMETERS');
-			% }}}
-			% run MITgcm until end of coupled time step {{{
-			disp('  running MITgcm continuation')
-			tic
-			system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
-			toc
-			disp('  done MITgcm continuation')
-
-			% check if bad solve
-			[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
-			if ~isempty(r)
-				error('MITgcm bad solve: NaN in STDOUT. Ending run!');
-			end
-			% }}}
 			% move files to modeltime suffix {{{
 			disp('  saving output files to modeltime suffix')
 
@@ -317,7 +331,7 @@ function runcouple(mdfile,mitfile)
 			delete(sprintf('pickup.%010i.data',relaxEndIter));
 			delete(sprintf('pickup.%010i.meta',relaxEndIter));
 			% }}}
-		end
+		%end
 		% }}}
 		% ice model {{{
 		% get melt from MITgcm {{{
@@ -344,8 +358,7 @@ function runcouple(mdfile,mitfile)
 		fname = sprintf('issmDiag.%010i.mat', modeltime_next);
 		disp(['  saving ISSM results to ' fname])
 		results = md.results.TransientSolution(end);
-		results.step = (n+1);
-		results.time = (n+1)*mit.timestepping.deltaT_coupled;
+		results.time = modeltime_next;
 		results.deltaBase = deltaBase;
 		save(fname,'results');
 		% }}}
