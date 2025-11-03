@@ -44,9 +44,7 @@ function runcouple(mdfile,mitfile)
 	nprocs=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm and ISSM
 	md.cluster=generic('name',oshostname(),'np',min(nprocs,70)); % set number of processors for ISSM.
 	md.timestepping.final_time=mit.timestepping.deltaT_coupled./md.constants.yts; % how long to run ISSM for (y)
-	path_parts = strsplit(pwd,'/');
-	md_prefix = ['runcouple_' path_parts{end-1}]; % the ISSM model name prefix for execution files
-	disp(['ISSM execution prefix: ', md_prefix]);
+	md_prefix = 'runcouple'; % the ISSM model name prefix for execution files
 
 	% Static fields for opening and closing draft cells
 	bathy_ref=binread(bathy_ref_file,8,[mit.mesh.Nx,mit.mesh.Ny]); % the MITgcm bathymetry in col,row matrix (m)
@@ -134,12 +132,14 @@ function runcouple(mdfile,mitfile)
 		% read pickup file
 		fname=sprintf('pickup.save.%010i.data',modeltime); % the data filename
 		disp(['  reading ocean pickup file ' fname]);
-		PickupData=binread(fname,8,[mit.mesh.Nx, mit.mesh.Ny, 6*mit.mesh.Nz+3]); % read the whole file
-		U=PickupData(:,:,(1:mit.mesh.Nz)+0*mit.mesh.Nz); % x component of velocity (m/s)
-		V=PickupData(:,:,(1:mit.mesh.Nz)+1*mit.mesh.Nz); % y component of velocity (m/s)
-		T=PickupData(:,:,(1:mit.mesh.Nz)+2*mit.mesh.Nz); % Temperature state (deg C)
-		S=PickupData(:,:,(1:mit.mesh.Nz)+3*mit.mesh.Nz); % Salinity state (g/kg)
-		E=PickupData(:,:,(1)+6*mit.mesh.Nz); % free surface state (m)
+		if n=1
+			PickupData=binread(fname,8,[mit.mesh.Nx, mit.mesh.Ny, 6*mit.mesh.Nz+3]); % read the whole file
+			U=PickupData(:,:,(1:mit.mesh.Nz)+0*mit.mesh.Nz); % x component of velocity (m/s)
+			V=PickupData(:,:,(1:mit.mesh.Nz)+1*mit.mesh.Nz); % y component of velocity (m/s)
+			T=PickupData(:,:,(1:mit.mesh.Nz)+2*mit.mesh.Nz); % Temperature state (deg C)
+			S=PickupData(:,:,(1:mit.mesh.Nz)+3*mit.mesh.Nz); % Salinity state (g/kg)
+			E=PickupData(:,:,(1)+6*mit.mesh.Nz); % free surface state (m)
+		end
 
 		U_old=U;
 		V_old=V;
@@ -342,11 +342,12 @@ function runcouple(mdfile,mitfile)
 		% }}}
 		% run MITgcm until end of coupled time step {{{
 		%return
-		disp('  running MITgcm')
-		tic
-		system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
-		toc
-		disp('  done MITgcm')
+		disp('  SKIPPING MITgcm!')
+		%disp('  running MITgcm')
+		%tic
+		%system(['mpirun -np ' int2str(nprocs) ' ./mitgcmuv > out 2> err']);
+		%toc
+		%disp('  done MITgcm')
 
 		% check if bad solve
 		[~, r]=system('grep " cg2d: Sum(rhs),rhsMax =                    NaN  0.00000000000000E+00" STDOUT.0000 | uniq -c');
@@ -357,13 +358,12 @@ function runcouple(mdfile,mitfile)
 		% move files to modeltime suffix {{{
 		disp('  saving output files to modeltime suffix')
 
-		movefile(sprintf('pickup.%010i.data',mit.inputdata.PARM{3}.nEndIter), sprintf('pickup.save.%010i.data',modeltime_next)); % pickup.data
-		movefile(sprintf('pickup.%010i.meta',mit.inputdata.PARM{3}.nEndIter), sprintf('pickup.save.%010i.meta',modeltime_next)); % pickup.meta
-		movefile(sprintf('SHICE_fwFluxtave.%010i.data',mit.inputdata.PARM{3}.nEndIter), sprintf('SHICE_fwFluxtave.save.%010i.data',modeltime_next)); % SHICE_fwFluxtave.data
-		movefile(sprintf('SHICE_fwFluxtave.%010i.meta',mit.inputdata.PARM{3}.nEndIter), sprintf('SHICE_fwFluxtave.save.%010i.meta',modeltime_next)); % SHICE_fwFluxtave.meta
+		%copyfile(sprintf('pickup.%010i.data',modeltime), sprintf('pickup.save.%010i.data',modeltime_next)); % pickup.data
+		%copyfile(sprintf('pickup.%010i.meta',modeltime), sprintf('pickup.save.%010i.meta',modeltime_next)); % pickup.meta
+		%copyfile(sprintf('SHICE_fwFluxtave.%010i.data',modeltime), sprintf('SHICE_fwFluxtave.save.%010i.data',modeltime_next)); % SHICE_fwFluxtave.data
+		%movefile(sprintf('SHICE_fwFluxtave.%010i.meta',modeltime), sprintf('SHICE_fwFluxtave.save.%010i.meta',modeltime_next)); % SHICE_fwFluxtave.meta
 		% save the hFacC and draft files
-		movefile('hFacC.data', sprintf('hFacC.save.%010i.data',modeltime_next)); % hFacC.data
-		movefile('hFacC.meta', sprintf('hFacC.save.%010i.meta',modeltime_next)); % hFacC.meta
+		binwrite(sprintf('hFacC.save.%010i.data',modeltime_next),hFacC_new,4)
 		movefile(draft_file,   sprintf('draft.save.%010i.bin', modeltime_next)); % draft.bin
 		% }}}
 		%end

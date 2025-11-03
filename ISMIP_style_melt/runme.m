@@ -1,5 +1,6 @@
 steps=[2];
-exp_name='Paris2C';
+%exp_name='Paris2C';
+exp_name='RCP85';
 
 prophdir='/nobackup/bgetraer/issmjpl/proj-getraer/proj-PROPHET';
 prefix=['PROPHET_ISMIPstyle_' exp_name '_'];
@@ -215,16 +216,11 @@ if perform(org,'TransientRun') % {{{
 		md.miscellaneous.name=sprintf('%sTransientRun_%4.0i-%4.0i',prefix,floor(d_time(1)),floor(d_time(end)));
 		md=solve(md,'tr');
 
-		% save results
-		fname = sprintf('./Models/%s_results_%4.0i-%4.0i',prefix,floor(d_time(1)),floor(d_time(end)));
+		% save results every 0.25 years
+		fname = sprintf('./Models/%sresults_%4.0i-%4.0i',prefix,floor(d_time(1)),floor(d_time(end)));
 		disp(['  saving results to ' fname])
-		results=struct();
-      results.time =                                [md.results.TransientSolution.time];
-		results.Vel =                                 [md.results.TransientSolution.Vel];
-		results.IceVolumeAboveFloatation =            [md.results.TransientSolution.IceVolumeAboveFloatation];
-		results.BasalforcingsFloatingiceMeltingRate = [md.results.TransientSolution.BasalforcingsFloatingiceMeltingRate];
-		results.Thickness =                           [md.results.TransientSolution.Thickness];
-		results.Base =                                [md.results.TransientSolution.Base];
+		ind = mod([md.results.TransientSolution.time],0.25)==0;
+		results = md.results.TransientSolution(ind);
       save(fname,'results');
 
       % reinitialize ISSM from results

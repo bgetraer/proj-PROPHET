@@ -1,7 +1,7 @@
 #PBS -S /bin/bash
 #PBS -l select=3:ncpus=25:model=bro
 #PBS -q long
-#PBS -l walltime=2:00:00
+#PBS -l walltime=4:00:00
 #PBS -m e
 #PBS -W group_list=s2950
 #PBS -o /nobackupp18/bgetraer/issmjpl/proj-getraer/proj-PROPHET/ISMIP_style_melt/outlogRCP85
