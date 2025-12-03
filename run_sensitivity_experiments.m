@@ -560,7 +560,7 @@ if perform(org,'RunOcean') % {{{
 			% set run parameters for PBS queue file
 			rundir = fullfile(exp_dir,'runocean'); % which experiment directory to run
 			%rundir = '/nobackupp18/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/test/run';
-			grouplist = 's2950'; % account on Pleiades
+			grouplist = 's2013'; % account on Pleiades
 			npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 			queuename = 'long'; % which queue to submit to (long or devel)
 			walltime = duration(120,0,0); % walltime to request
@@ -714,7 +714,7 @@ if perform(org,'RunCoupled') % {{{
 	% set run parameters for PBS queue file
 	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
-	grouplist = 's2950'; % account on Pleiades
+	grouplist = 's2013'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 	queuename = 'long'; % which queue to submit to (long or devel)
 	%queuename = 'devel'; % which queue to submit to (long or devel)
@@ -777,7 +777,7 @@ if perform(org,'RunPickup') % {{{
 	% set run parameters for PBS queue file
 	mccdir = fullfile(proph_dir,'runcouple/mccfiles/');
 	mdfile = fullfile(proph_dir,'experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
-	grouplist = 's2950'; % account on Pleiades
+	grouplist = 's2013'; % account on Pleiades
 	npMIT=mit.build.SZ.nPx*mit.build.SZ.nPy; % number of processors for MITgcm
 	queuename = 'long'; % which queue to submit to (long or devel)
 	%queuename = 'devel'; % which queue to submit to (long or devel)

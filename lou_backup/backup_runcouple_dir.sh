@@ -9,10 +9,10 @@ set -euo pipefail
 ROOT_DIR="/nobackup/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments"
 DEST_ROOT_DIR="/u/bgetraer/backup/proj-PROPHET/experiments"
 
-# --- path to sync_dir.sh (adjust if needed) ---
+# --- path to sync_dir.sh ---
 SYNC_SCRIPT="$(dirname "$0")/sync_dir.sh"
 
-# --- SCENARIOS (optional section) ---
+# --- SCENARIOS  ---
 declare -a SCENARIO_SOURCE_DIRS=(
 "Paris2C/runcoupledRUN02_dt100_ct1296000"
 "RCP85/runcoupledRUN02_dt100_ct1296000"

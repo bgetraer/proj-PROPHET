@@ -3,7 +3,7 @@
 #PBS -q long
 #PBS -l walltime=120:00:00
 #PBS -m e
-#PBS -W group_list=s2950
+#PBS -W group_list=s2013
 #PBS -o /nobackupp18/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/MWE/run/outlog
 #PBS -e /nobackupp18/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/MWE/run/errlog
 
