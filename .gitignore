@@ -1,0 +1,9 @@
+tar/*
+runcouple/oldscripts/*
+experiments/*
+climateforcings/data/*
+climateforcings/naughten2023_data/*
+*.mat
+*/mccfiles/*
+pbs_scripts/errlog
+pbs_scripts/outlog
