@@ -10,6 +10,10 @@ function runcouple(mdfile,mitfile)
 	% Example:
 	%    runcouple(mdfile,mitfile);
 
+	% load toolbox:
+	path_issmxmitgcm = '/nobackup/bgetraer/issmjpl/proj-getraer/issmxmitgcm/issmxmitgcm/';
+	addpath(path_issmxmitgcm)
+
 	% opening display {{{
 	dispMITxISSM();
 	disp('************************************************************************************');
@@ -130,12 +134,6 @@ function runcouple(mdfile,mitfile)
 			disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
 			disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
 			% }}}
-			% calculate updated hFacC, hFacW, and hFacS {{{
-
-			hFacC = 
-			hFacW = 
-			hFacS = 
-			% }}}
 			% read pickup file, open new cells, write updated init files {{{
 			% read pickup file
 			fname=sprintf('pickup.save.%010i.data',modeltime); % the data filename
@@ -146,41 +144,77 @@ function runcouple(mdfile,mitfile)
 			T=PickupData(:,:,(1:mit.mesh.Nz)+2*mit.mesh.Nz); % Temperature state (deg C)
 			S=PickupData(:,:,(1:mit.mesh.Nz)+3*mit.mesh.Nz); % Salinity state (g/kg)
 			E=PickupData(:,:,(1)+6*mit.mesh.Nz); % free surface state (m)
+
 			% open new cells as necessary 
-			% find indices of locations where ice shelf retreated
+			% read previous hFacC
 			fname=sprintf('hFacC.save.%010i.data',modeltime);
 			disp(['  reading ocean hFacC file ' fname]);
-			hFacC=binread(fname,4,[mit.mesh.Nx, mit.mesh.Ny, mit.mesh.Nz]); % hFacC (m)
-			hCol=sum(hFacC,3); % water column height (m)
-			[iw jw]=find(hCol>0); % horizontal indices where there is water
-			[im jm] = find(newdraft>draft & newdraft>mit.mesh.zp(end)); % horizontal indices where there is melt
+			hFacC_old = binread(fname,4,[mit.mesh.Nx, mit.mesh.Ny, mit.mesh.Nz]); % hFacC (m)
+%			hFacW_old = binread(sprintf('hFacW.save.%010i.data',modeltime),4,[mit.mesh.Nx, mit.mesh.Ny, mit.mesh.Nz]); % hFacW (m)
+%			hFacS_old = binread(sprintf('hFacS.save.%010i.data',modeltime),4,[mit.mesh.Nx, mit.mesh.Ny, mit.mesh.Nz]); % hFacS (m)
+			% calculate updated hFacC, hFacW, and hFacS
+			[hFacC_new, hFacW_new, hFacS_new] = compute_hfac(mit.mesh.zp, bathy, newdraft, mit.inputdata.PARM{1}.hFacMin);
+			mask_closed = (hFacC_old>0 & hFacC_new==0); % mask of all cells which have closed
+			mask_opened = (hFacC_old==0 & hFacC_new>0); % mask of all cells which have opened
 
-			disp(['  found ' num2str(numel(im)) ' melt cells']);
-			disp(['   - max diff draft = ' num2str(max((newdraft(:)-draft(:))))]);
-			disp(['   - min diff draft = ' num2str(min((newdraft(:)-draft(:))))]);
-
-			%Extrapolate T/S to locations where ice shelf retreated
-			for i=1:length(im)
+			% Loop through opened cells
+			% *** There should probably be some recursive algorithm that tracks which cells have been filled/updated
+			% *** and is able to fill multiple connected new cells in the "right" order. Currently, corner cases where
+			% *** multiple cells open at once in a single column may not fill in the intended correct order. Multiple
+			% *** new cells connected horizontally may also not fill in the intended correct order. These cases are 
+			% *** handled in the order that the algorithm reaches the cell, and according to the old connectivity, not 
+			% *** the updated one.
+			disp('  opening and filling new cells using hFacC');
+			[io,jo,ko] = ind2sub(size(mask_opened),find(mask_opened));
+			for i=1:numel(io)
+				kw = find(hFacC_old(io(i),jo(i),:),1); % the vertical index where there is water
 				% first try vertical extrapolation
-				kw=find(hFacC(im(i),jm(i),:)); % the vertical index where there is water
 				if numel(kw)>0
-					S(im(i),jm(i),1:min(kw)) = S(im(i),jm(i),min(kw));
-					T(im(i),jm(i),1:min(kw)) = T(im(i),jm(i),min(kw));
-				else	%If not succesful, use closest neighbor horizontal extrapolation
-					[~,ind]=min((iw-im(i)).^2+(jw-jm(i)).^2);
-					salt_profile=squeeze(S(iw(ind),jw(ind),:)); % salinity profile of closest neighbor
-					temp_profile=squeeze(T(iw(ind),jw(ind),:)); % temperature profile of closest neighbor
-					kw=find(hFacC(iw(ind),jw(ind),:)); % the vertical index where there is water
-					salt_profile(1:min(kw))=salt_profile(min(kw)); % extrapolate salinity profile to top
-					temp_profile(1:min(kw))=temp_profile(min(kw)); % extrapolate temperature profile to top
-					salt_profile(max(kw):end)=salt_profile(max(kw)); % extrapolate salinity profile to bottom
-					temp_profile(max(kw):end)=temp_profile(max(kw)); % extrapolate temperature profile to bottom
-					S(im(i),jm(i),:)=salt_profile; % set salinity for new ocean column
-					T(im(i),jm(i),:)=temp_profile; % set salinity for new ocean column
+               S(io(i),jo(i),1:min(kw)) = S(io(i),jo(i),min(kw));
+					T(io(i),jo(i),1:min(kw)) = T(io(i),jo(i),min(kw));
+				else %If not succesful, use closest neighbor horizontal extrapolation
+					ind_adj = sub2ind(size(hFacC_new),io(i)+[-1,0,0,+1],jo(i)+[0,-1,+1,0],ko(i)+[0,0,0,0]); % index of adjacent cells
+					ind_adj_wet_old = ind_adj(hFacC_old(ind_adj)>0); % index of previously wet adjacent cells
+					if ~isempty(ind_adj_wet_old)
+						% there are previously wet adjacent cells, fill from the sides.
+						% use a weighted average of the open cells around it.
+						S(io,jo,ko) = sum(S(ind_adj_wet_old) .* hFacC_old(ind_adj_wet_old)) ./ sum(hFacC_old(ind_adj_wet_old)); 
+						T(io,jo,ko) = sum(T(ind_adj_wet_old) .* hFacC_old(ind_adj_wet_old)) ./ sum(hFacC_old(ind_adj_wet_old));
+					else
+						% there are no previously wet adjacent cells, do not open the new cell.
+						newdraft(io(i),jo(i)) = draft(io(i),jo(i));
+						hFacC_new(io(i),jo(i),ko(i)) = hFacC_old(io(i),jo(i),ko(i));
+
+						% check if there are new wet adjacent cells
+						ind_adj_wet_new = ind_adj(hFacC_new(ind_adj)>0); % index of updated wet adjacent cells
+						if ~isempty(ind_adj_wet_new)
+							warning(['No old adjacent wet cell, draft will not be updated, new cell will not be opened. ind=',...
+								num2str(sub2ind(size(hFacC_new),io(i),jo(i),ko(i)))]);
+						end
+					end
 				end
 			end
+			% }}}
 
 			% Update pressure loading at the ice ocean interface
+			p_anom = zeros(size(newdraft)); % initialize to zero pressure anomaly everywhere (dB)
+			
+			% Pressure anomaly only exists where there is an open ice shelf cavity
+			[~,ind_wet]=max(hFacC_new>0,[],3,'linear'); % linear index of the first (at least partially) “wet” cell in each column
+			[~,~,k_wet]=ind2sub(size(hFacC_new),ind_wet); % vertical index of the first (at least partially) “wet” cell in each column
+			ind = find(k_wet>1); % linear 2D index where there is an open ice shelf cavity
+
+			% Struggling with concetrating on this a lot.
+			% what i want to do is to loop through all of my columns that have an ice shelf, figure out the pressure at the edge above the k_wet cell.
+			% which is really zp(k_wet). Will have to come back to this.
+			p_anom(ind) = 
+
+
+
+
+
+
+
 
 
 			% write updated MITgcm files

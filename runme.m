@@ -10,8 +10,8 @@ steps=[10];
 %   'RCP85'   % ensemble average forcings from ISMIP-6
 %   'Paris2C' % ensemble average forcings from Paris 2
 
-experiment.name='RCP85';
-%experiment.name='Paris2C';
+%experiment.name='RCP85';
+experiment.name='Paris2C';
 experiment.init='MITgcm_initialization';
 mit_dT      = 100; % s
 coupling_dT = 15*24*60*60; % s
@@ -1544,7 +1544,7 @@ if perform(org,'RunPickup') % {{{
 	walltime = duration(5*24,0,0); % walltime to request
 
 
-	interactive = 1; % run interactive?
+	interactive = 0; % run interactive?
 	if interactive
 		% INTERACTIVE RUN
 		% see pbs scripts folder
