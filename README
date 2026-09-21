@@ -9,9 +9,12 @@ MITgcm can be freely accessed at: https://github.com/MITgcm/MITgcm.git
 _________________________________________________________________________
 
 Overview of experiment scripts:
-   RUN_ISSM_INIT.m      Initialize ice sheet model
-   RUN_MITGCM_INIT.m    Initialize ocean model
-   RUN_ISSMxMITGCM.m    Run coupled model
+   RUN_ISSM_INIT.m                  Initialize ice sheet model
+   RUN_ME.m                         Run scenario based coupled models
+   RUN_SENSITIVITY_EXPERIMENTS.m    Run additional models
+   RUN_UNCOUPLED.m                  Run uncoupled version of the ice sheet model
 
+Additional analysis:
+   ANALYSIS_DAN/                    Analysis scripts and processed data for Goldberg 2026
 
 This work is from the PROPHET project, a component of the International Thwaites Glacier Collaboration (ITGC). Support from National Science Foundation (NSF: Grant \#1739031) and Natural Environment Research Council (NERC: Grants NE/S006745/1 and NE/S006796/1).
