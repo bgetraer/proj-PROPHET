@@ -1,4 +1,4 @@
-steps = [5];
+steps = [19];
 
 analysisdir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/analysis_Dan';
 datadir = fullfile(analysisdir,'data');
@@ -307,10 +307,10 @@ if perform(org,'plot_issm_results') % {{{
 	fname = 'Control_results';
 	Control_results = load(fullfile(datadir,fname));
 
-%	fname = sprintf('%s_uncoupled_ISSMresults',experiments(1));
-%	Paris2C_UC_results = loadmodel(fullfile(datadir,fname));
-%	fname = sprintf('%s_uncoupled_ISSMresults',experiments(2));
-%	RCP85_UC_results = loadmodel(fullfile(datadir,fname));
+	%	fname = sprintf('%s_uncoupled_ISSMresults',experiments(1));
+	%	Paris2C_UC_results = loadmodel(fullfile(datadir,fname));
+	%	fname = sprintf('%s_uncoupled_ISSMresults',experiments(2));
+	%	RCP85_UC_results = loadmodel(fullfile(datadir,fname));
 
 	% plot
 	figure(1);clf;
@@ -329,26 +329,26 @@ if perform(org,'plot_issm_results') % {{{
 
 	% CONTROL
 	t = Control_results.time;
-   ice_maf_THW = (Control_results.VAF.THW - Control_results.VAF.THW(1)).*rhoGt;
-   hControl_THW = plot(t,ice_maf_THW,'-k');
+	ice_maf_THW = (Control_results.VAF.THW - Control_results.VAF.THW(1)).*rhoGt;
+	hControl_THW = plot(t,ice_maf_THW,'-k');
 
-%	% Uncoupled RCP85
-%	t = [RCP85_UC_results.time];
-%	ice_maf_basin21 = ([RCP85_UC_results.ice_vaf_basin21] - RCP85_UC_results(1).ice_vaf_basin21).*rhoGt;
-%	ice_maf_basin22 = ([RCP85_UC_results.ice_vaf_basin22] - RCP85_UC_results(1).ice_vaf_basin22).*rhoGt;
-%	ice_maf_total = ice_maf_basin21+ice_maf_basin22;
-%	%hRCP85_UC_total = plot(t,ice_maf_total,'-r','linewidth',2);
-%	hRCP85_UC_basin21 = plot(t,ice_maf_basin21,':r','linewidth',1);
-%	hRCP85_UC_basin22 = plot(t,ice_maf_basin22,':r','linewidth',1);
-%
-%	% Uncoupled Paris2C
-%	t = [Paris2C_UC_results.time];
-%	ice_maf_basin21 = ([Paris2C_UC_results.ice_vaf_basin21] - Paris2C_UC_results(1).ice_vaf_basin21).*rhoGt;
-%	ice_maf_basin22 = ([Paris2C_UC_results.ice_vaf_basin22] - Paris2C_UC_results(1).ice_vaf_basin22).*rhoGt;
-%	ice_maf_total = ice_maf_basin21+ice_maf_basin22;
-%	%hParis2C_UC_total = plot(t,ice_maf_total,'-r','linewidth',2);
-%	hParis2C_UC_basin21 = plot(t,ice_maf_basin21,':b','linewidth',1);
-%	hParis2C_UC_basin22 = plot(t,ice_maf_basin22,':b','linewidth',1);
+	%	% Uncoupled RCP85
+	%	t = [RCP85_UC_results.time];
+	%	ice_maf_basin21 = ([RCP85_UC_results.ice_vaf_basin21] - RCP85_UC_results(1).ice_vaf_basin21).*rhoGt;
+	%	ice_maf_basin22 = ([RCP85_UC_results.ice_vaf_basin22] - RCP85_UC_results(1).ice_vaf_basin22).*rhoGt;
+	%	ice_maf_total = ice_maf_basin21+ice_maf_basin22;
+	%	%hRCP85_UC_total = plot(t,ice_maf_total,'-r','linewidth',2);
+	%	hRCP85_UC_basin21 = plot(t,ice_maf_basin21,':r','linewidth',1);
+	%	hRCP85_UC_basin22 = plot(t,ice_maf_basin22,':r','linewidth',1);
+	%
+	%	% Uncoupled Paris2C
+	%	t = [Paris2C_UC_results.time];
+	%	ice_maf_basin21 = ([Paris2C_UC_results.ice_vaf_basin21] - Paris2C_UC_results(1).ice_vaf_basin21).*rhoGt;
+	%	ice_maf_basin22 = ([Paris2C_UC_results.ice_vaf_basin22] - Paris2C_UC_results(1).ice_vaf_basin22).*rhoGt;
+	%	ice_maf_total = ice_maf_basin21+ice_maf_basin22;
+	%	%hParis2C_UC_total = plot(t,ice_maf_total,'-r','linewidth',2);
+	%	hParis2C_UC_basin21 = plot(t,ice_maf_basin21,':b','linewidth',1);
+	%	hParis2C_UC_basin22 = plot(t,ice_maf_basin22,':b','linewidth',1);
 
 
 	set([hRCP85_THW,hParis2C_THW,hControl_THW],'linewidth',1.5);
@@ -378,16 +378,16 @@ if perform(org,'plot_issm_results') % {{{
 	plot(t,[RCP85_results.melt_basin22]*1000*1E-12,'r');
 	%set([hRCP85,hParis2C],'linewidth',1);
 
-%	% Uncoupled Paris2C
-%	t = [Paris2C_UC_results.time];
-%	%hParis2C   = plot(t,[Paris2C_UC_results.melt]*1000*1E-12,':b');
-%	plot(t,[Paris2C_UC_results.melt_basin21]*1000*1E-12,':b');
-%	plot(t,[Paris2C_UC_results.melt_basin22]*1000*1E-12,':b');
-%	% Uncoupled RCP85
-%	t = [RCP85_UC_results.time];
-%	%hRCP85 = plot(t,[RCP85_UC_results.melt]*1000*1E-12,':r');
-%	plot(t,[RCP85_UC_results.melt_basin21]*1000*1E-12,':r');
-%	plot(t,[RCP85_UC_results.melt_basin22]*1000*1E-12,':r');
+	%	% Uncoupled Paris2C
+	%	t = [Paris2C_UC_results.time];
+	%	%hParis2C   = plot(t,[Paris2C_UC_results.melt]*1000*1E-12,':b');
+	%	plot(t,[Paris2C_UC_results.melt_basin21]*1000*1E-12,':b');
+	%	plot(t,[Paris2C_UC_results.melt_basin22]*1000*1E-12,':b');
+	%	% Uncoupled RCP85
+	%	t = [RCP85_UC_results.time];
+	%	%hRCP85 = plot(t,[RCP85_UC_results.melt]*1000*1E-12,':r');
+	%	plot(t,[RCP85_UC_results.melt_basin21]*1000*1E-12,':r');
+	%	plot(t,[RCP85_UC_results.melt_basin22]*1000*1E-12,':r');
 
 	ylabel('total melt (Gt/yr)');
 
@@ -396,6 +396,695 @@ if perform(org,'plot_issm_results') % {{{
 
 	xlim([2013,2100])
 	set(gca,'fontsize',14)
+end % }}}
+
+if perform(org,'bed_topography') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load inital ice state
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	field = md.geometry.bed;
+	[bed,x,y] = interpISSMtoDanMesh(md,field,D);
+   bed.units   = 'm';
+
+	% save to file
+	fname = sprintf('bed');
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','bed','-v7.3');
+end % }}}
+if perform(org,'initial_velocity') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load inital ice state
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+   [vx_init,x,y] = interpISSMtoDanMesh(md,md.initialization.vx,D);
+   vx_init.units   = 'm/yr';
+
+   [vy_init] = interpISSMtoDanMesh(md,md.initialization.vy,D);
+   vy_init.units   = 'm/yr';
+
+	% save to file
+	fname = sprintf('velocity_initial');
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','vx_init','vy_init','-v7.3');
+end % }}}
+if perform(org,'initial_thickness') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load inital ice state
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	field = md.geometry.thickness;
+	[H_init,x,y] = interpISSMtoDanMesh(md,field,D);
+   H_init.units   = 'm';
+
+	% save to file
+	fname = sprintf('thickness_initial');
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','H_init','-v7.3');
+end % }}}
+if perform(org,'initial_meltrate') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	file_ind = 94608000;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+
+	field = results.Paris2C.BasalforcingsFloatingiceMeltingRate;
+	[Paris2C.meltrate,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.meltrate.units   = 'm/yr';
+
+	field = results.RCP85.BasalforcingsFloatingiceMeltingRate;
+	[RCP85.meltrate] = interpISSMtoDanMesh(md,field,D);
+   RCP85.meltrate.units   = 'm/yr';
+
+	% save to file
+	fname = sprintf('meltrate_initial');
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','Paris2C','RCP85','-v7.3');
+end % }}}
+if perform(org,'elapsed_thickness') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 5; % when to extract thickness (yr)
+	yr0 = 3; % when the coupling starts (yr)
+	file_ind = (yr_q+yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+
+	field = results.Paris2C.Thickness;
+	[Paris2C.H,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.H.units   = 'm';
+
+	field = results.RCP85.Thickness;
+	[RCP85.H] = interpISSMtoDanMesh(md,field,D);
+   RCP85.H.units   = 'm';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('thickness_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','-v7.3');
+end % }}}
+
+if perform(org,'thickness_2099') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2099; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+	monthly_clim_dir='/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled';
+   results.MonthlyClim = loadmodel(fullfile(monthly_clim_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+	MonthlyClim = struct();
+
+	field = results.Paris2C.Thickness;
+	[Paris2C.H,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.H.units   = 'm';
+
+	field = results.RCP85.Thickness;
+	[RCP85.H] = interpISSMtoDanMesh(md,field,D);
+   RCP85.H.units   = 'm';
+
+	field = results.MonthlyClim.Thickness;
+	[MonthlyClim.H] = interpISSMtoDanMesh(md,field,D);
+   MonthlyClim.H.units   = 'm';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('thickness_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','MonthlyClim','-v7.3');
+end % }}}
+if perform(org,'thickness_2100') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2100; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+	monthly_clim_dir='/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled';
+   results.MonthlyClim = loadmodel(fullfile(monthly_clim_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+	MonthlyClim = struct();
+
+	field = results.Paris2C.Thickness;
+	[Paris2C.H,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.H.units   = 'm';
+
+	field = results.RCP85.Thickness;
+	[RCP85.H] = interpISSMtoDanMesh(md,field,D);
+   RCP85.H.units   = 'm';
+
+	field = results.MonthlyClim.Thickness;
+	[MonthlyClim.H] = interpISSMtoDanMesh(md,field,D);
+   MonthlyClim.H.units   = 'm';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('thickness_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','MonthlyClim','-v7.3');
+end % }}}
+if perform(org,'velocity_2100') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2100; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+	monthly_clim_dir='/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled';
+   results.MonthlyClim = loadmodel(fullfile(monthly_clim_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+	MonthlyClim = struct();
+
+	field = results.Paris2C.Vx;
+	[Paris2C.vx,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.vx.units   = 'm/yr';
+	field = results.Paris2C.Vy;
+	[Paris2C.vy] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.vy.units   = 'm/yr';
+
+	field = results.RCP85.Vx;
+	[RCP85.vx] = interpISSMtoDanMesh(md,field,D);
+   RCP85.vx.units   = 'm/yr';
+	field = results.RCP85.Vy;
+	[RCP85.vy] = interpISSMtoDanMesh(md,field,D);
+   RCP85.vy.units   = 'm/yr';
+
+	field = results.MonthlyClim.Vx;
+   [MonthlyClim.vx] = interpISSMtoDanMesh(md,field,D);
+   MonthlyClim.vx.units   = 'm/yr';
+   field = results.MonthlyClim.Vy;
+   [MonthlyClim.vy] = interpISSMtoDanMesh(md,field,D);
+   MonthlyClim.vy.units   = 'm/yr';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('velocity_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','-v7.3');
+end % }}}
+if perform(org,'meltrate_2100') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2100; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+	monthly_clim_dir='/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled';
+   results.MonthlyClim = loadmodel(fullfile(monthly_clim_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+	MonthlyClim = struct();
+
+	field = results.Paris2C.BasalforcingsFloatingiceMeltingRate;
+	[Paris2C.meltrate,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.meltrate.units   = 'm/yr';
+
+	field = results.RCP85.BasalforcingsFloatingiceMeltingRate;
+	[RCP85.meltrate] = interpISSMtoDanMesh(md,field,D);
+   RCP85.meltrate.units   = 'm/yr';
+
+	field = results.MonthlyClim.BasalforcingsFloatingiceMeltingRate;
+	[MonthlyClim.meltrate] = interpISSMtoDanMesh(md,field,D);
+   MonthlyClim.meltrate.units   = 'm/yr';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('meltrate_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','-v7.3');
+end % }}}
+if perform(org,'initial_buttresssing') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load inital ice state
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	field = buttressing_furst(md,md.initialization.vx,md.initialization.vy,md.geometry.thickness);
+	[Kn,x,y] = interpISSMtoDanMesh(md,field,D);
+   Kn.units   = 'dimensionless';
+
+	% save to file
+	fname = sprintf('furst_buttressing_initial');
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','Kn','-v7.3');
+end % }}}
+
+if perform(org,'buttresssing_2050') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2050; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+
+	field = buttressing_furst(md,results.Paris2C.Vx,results.Paris2C.Vy,results.Paris2C.Thickness);
+	[Paris2C.Kn,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.Kn.units   = 'dimensionless';
+
+	field = buttressing_furst(md,results.RCP85.Vx,results.RCP85.Vy,results.RCP85.Thickness);
+	[RCP85.Kn] = interpISSMtoDanMesh(md,field,D);
+   RCP85.Kn.units   = 'dimensionless';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('furst_buttressing_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','-v7.3');
+end % }}}
+if perform(org,'buttresssing_2100') % {{{
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   % time
+   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	yr_q = 2100; % when to extract thickness (yr)
+	yr0 = 2010; % when the coupling starts (yr)
+	file_ind = (yr_q-yr0)*3600*24*360;
+	filename = sprintf('issmDiag.%0.10i.mat',file_ind);
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load experiments
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	disp('Loading ISSM model');
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+	disp('Loading experiment results');
+	paris2c_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results';
+	results.Paris2C = loadmodel(fullfile(paris2c_dir,filename));
+	rcp85_dir = '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results';
+	results.RCP85 = loadmodel(fullfile(rcp85_dir,filename));
+
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% partition to different domains
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+
+	% interp from ISSM mesh to interpolation points
+	disp('Interpolating from ISSM mesh to grid');
+	Paris2C = struct();
+	RCP85 = struct();
+
+	field = buttressing_furst(md,results.Paris2C.Vx,results.Paris2C.Vy,results.Paris2C.Thickness);
+	[Paris2C.Kn,x,y] = interpISSMtoDanMesh(md,field,D);
+   Paris2C.Kn.units   = 'dimensionless';
+
+	field = buttressing_furst(md,results.RCP85.Vx,results.RCP85.Vy,results.RCP85.Thickness);
+	[RCP85.Kn] = interpISSMtoDanMesh(md,field,D);
+   RCP85.Kn.units   = 'dimensionless';
+
+	time = yr_q; % time in years
+
+	% save to file
+	fname = sprintf('furst_buttressing_%i_yrs',time);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'x','y','time','Paris2C','RCP85','-v7.3');
+end % }}}
+if perform(org,'assemble_monthly_climatology_issm_results') % {{{
+	% load initial model
+	md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_MeshParam.mat');
+	% load interpolation points
+	disp('Loading interpolation points');
+	fname = 'interpPoints.mat';
+	D = load(fname);
+	% calculate flotation thickness
+	H_fl = max(0, -(md.materials.rho_water/md.materials.rho_ice)* md.geometry.bed); % flotation thickness on ISSM mesh (m)
+	H_fl_q = InterpFromMeshToMesh2d(md.mesh.elements, md.mesh.x, md.mesh.y, H_fl, D.X_q, D.Y_q); % flotation thickness at cell centers (m)
+
+	% parallel
+	nproc = 56;
+	if ~exist(gcp("nocreate"))
+		parpool(nproc);
+	end
+
+	% loop over each experiment
+	fprintf('Assembling ISSM results for CONTROL monthly climatology experiment %s\n');
+	resultsdir='/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled';
+	files = {dir(resultsdir).name};
+	ind = find(contains(files,'issmDiag'));
+	fprintf('Found %i files\n',numel(ind));
+	% loop through all files
+	clear results;
+	%for (j = 1:3)%numel(ind))
+	parfor (j = 1:numel(ind), nproc)
+		fprintf('   file %i/%i...\n',j,numel(ind));
+		fname = fullfile(resultsdir,files{ind(j)});
+		% load model in parallel
+		md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_MeshParam.mat');
+		% load results into model
+		md.results.TransientSolution = loadmodel(fname);
+		results(j).time = md.results.TransientSolution.time/3600/24/360 + 2010; % model time (seconds)
+		results(j).H = md.results.TransientSolution.Thickness; % ice thickness (m)
+		results(j).Melt = md.results.TransientSolution.BasalforcingsFloatingiceMeltingRate; % Melt Rate (m/year)
+		results(j).masksub500 = 1-2*(md.results.TransientSolution.Base<-500); % index of ice base less than 500m depth (<0 is within mask)
+	end
+	%% save concatenated results (reading and writing may not be faster than just loading again in parallel...)
+	%fname = sprintf('%s_ISSMresults',experiments(i));
+	%fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	%save(fullfile(datadir,fname),'results','-v7.3');
+
+	% interp thickness from ISSM mesh to interpolation points
+	Hmatrix = [results(:).H]; % make one nelement x ntimesteps matrix (m)
+	H_q = InterpFromMeshToMesh2d(md.mesh.elements, md.mesh.x ,md.mesh.y , Hmatrix, D.X_q, D.Y_q); % thickness at cell centers (m)
+	Meltmatrix = [results(:).Melt]; % make one nelement x ntimesteps matrix (m/year)
+	Melt_q = InterpFromMeshToMesh2d(md.mesh.elements, md.mesh.x ,md.mesh.y, Meltmatrix,  D.X_q, D.Y_q); % melt rate at cell centers (m/year)
+	masksub500matrix = [results(:).masksub500]; % make one nelement x ntimesteps matrix (mask)
+	masksub500_q = InterpFromMeshToMesh2d(md.mesh.elements, md.mesh.x ,md.mesh.y, masksub500matrix, D.X_q, D.Y_q); % cell centers with base <500m (mask)
+	masksub500_q = masksub500_q<0; % cell centers with base <500m (logical)
+	% calculate thickness above flotation
+	HAF_q = max((H_q-H_fl_q), 0); % height above flotation (m)
+	% calculate volume above flotation, simple entire cell "in or out" mask 
+	VAF_q = HAF_q.*D.Areas_q; % volume above flotation at cell centers (m^3)
+	% calculate melt volume per year, simple entire cell "in or out" mask
+	Melt_vol_q = Melt_q.*D.Areas_q; % melt volume per year (m^3/year)
+
+	% calculate Dan's requested fields:
+	%	1. annual (or per-timestep) VAF for each of PIG, THW and Smith, in km^3. (MAF in Gt.)
+	%	2. annual (or per-coupled-timestep) total melt in Gt/a for PIG, THW and Smith.
+	%	3. annual (or per-coupled-timestep) total melt in Gt/a for PIG, THW and Smith below 500m.
+	time = [results.time]; % calendar years
+	VAF.PIG		= 1E-9 * sum(VAF_q(D.PIG_ind,:),1); % volume above flotation for Pine Island Glacier catchment (km^3)
+	VAF.THW		= 1E-9 * sum(VAF_q(D.THW_ind,:),1);   % volume above flotation for Thwaites Glacier cathcment (km^3)
+	VAF.SMITH	= 1E-9 * sum(VAF_q(D.SMITH_ind,:),1); % volume above flotation for Smith Glacier cathment (km^3)
+	VAF.units	= 'km^3';
+	MELT.PIG		= 1E-9 * sum(Melt_vol_q(D.PIG_ind,:),1);   % total melt from Pine Island Glacier catchment (Gt/year)
+	MELT.THW		= 1E-9 * sum(Melt_vol_q(D.THW_ind,:),1);   % total melt from Thwaites Glacier catchment (Gt/year)
+	MELT.SMITH	= 1E-9 * sum(Melt_vol_q(D.SMITH_ind,:),1); % total melt from Smith Glacier catchment (Gt/year)
+	MELT.units	= 'Gt/year';
+	MELT_sub500m.PIG	= 1E-9 * sum(masksub500_q(D.PIG_ind,:) .* Melt_vol_q(D.PIG_ind,:),1);   % total sub-500m melt from Pine Island catchment (Gt/year)
+	MELT_sub500m.THW	= 1E-9 * sum(masksub500_q(D.THW_ind,:) .* Melt_vol_q(D.THW_ind,:),1);   % total sub-500m melt from Thwaites catchment (Gt/year)
+	MELT_sub500m.SMITH= 1E-9 * sum(masksub500_q(D.SMITH_ind,:) .* Melt_vol_q(D.SMITH_ind,:),1); % total sub-500m melt from Smith catchment (Gt/year)
+	MELT_sub500m.units= 'Gt/year';
+
+	% save results
+	experiment_name = 'Monthly_Climatology';
+	fname = sprintf('%s_results',experiment_name);
+	fprintf('   saving results to %s\n',fullfile(datadir,fname));
+	save(fullfile(datadir,fname),'time','VAF','MELT','MELT_sub500m','-v7.3');
+delete(gcp("nocreate"));
+end % }}}
+if perform(org,'Kn_melt_trend') % {{{
+% configuration
+nbins=30;
+Kn_limits=[-0.2,1.2];
+year_start = 2013;
+year_end = 2100;
+year_ref = 2010;
+seconds_per_year = 3600*24*360;
+
+% setup bins and time
+edges = linspace(Kn_limits(1),Kn_limits(2),nbins+1);
+yr_q = linspace(year_start,year_end,(year_end-year_start)*12 + 1); 
+file_ind = round((yr_q-year_ref)*seconds_per_year);
+file_ind(1) = 94608000; % beginning file index
+n_timesteps = numel(file_ind);
+
+% load static data
+disp('Loading ISSM model and interpolation points');
+md = loadmodel('/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/ISSM_initialization/Models/PROPHET_issm_init_TransientPrep.mat');
+D = load('interpPoints.mat');
+
+% Define scenarios and domains
+domains = {'PIG', 'THW', 'SMITH'};
+scenarios = {'Paris2C', 'RCP85', 'MonthlyClim'};
+exp_dir = struct(...
+    'Paris2C', '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/Paris2C/RUN02/results', ...
+    'RCP85', '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/RCP85/RUN02/results', ...
+    'MonthlyClim', '/totten_1/bgetraer/issmjpl/proj-getraer/proj-PROPHET/experiments/sensitivity_experiments/se003_KN_monthly_clim/runcoupled');
+
+%% Pre-allocate output
+n_scenarios = numel(scenarios);
+n_domains = numel(domains);
+results_all = cell(n_scenarios, 1);
+
+% Pre-allocate output - use cell array for multiple scenarios
+results_all = cell(n_scenarios, 1);
+for s = 1:n_scenarios
+    results_all{s} = repmat(struct('n', struct(), 'mean_melt', struct(), ...
+                                    'time', [], 'n_units', '', 'mean_melt_units', ''), ...
+                            n_timesteps, 1);
+end
+
+%% parallel
+%c = parcluster('Processes');
+%c.NumWorkers = 80; % Set to your desired number
+%saveAsProfile(c, 'Processes');
+%
+%nproc = 80;
+%if ~exist(gcp("nocreate"))
+%	parpool(nproc);
+%end
+
+for s = 1:n_scenarios
+	scenario = scenarios{s};
+	directory = exp_dir.(scenario);
+	for i=1:n_timesteps
+	%parfor (i = 1:n_timesteps, nproc)
+		fprintf('Processing timestep %i/%i (Scenario %i/%i)\n', i, n_timesteps, s, n_scenarios);
+
+		filename = sprintf('issmDiag.%0.10i.mat',file_ind(i));
+		results = loadmodel(fullfile(directory,filename));
+
+		% compute buttressing and melt rate
+		field = buttressing_furst(md,results.Vx,results.Vy,results.Thickness);
+		[Kn,~,~] = interpISSMtoDanMesh(md,field,D);
+
+		field = results.BasalforcingsFloatingiceMeltingRate;
+		[meltrate,~,~] = interpISSMtoDanMesh(md,field,D);
+
+		% Bin data for each domain
+		for d = 1:n_domains
+			domain = domains{d};
+			[results_all{s}(i).mean_melt.(domain), results_all{s}(i).n.(domain)] = ...
+				get_mean_melt_per_bin(Kn.(domain), meltrate.(domain), edges);
+		end
+
+		% Store metadata
+		results_all{s}(i).time = yr_q(i);
+		results_all{s}(i).n_units = 'count of cells';
+		results_all{s}(i).mean_melt_units = 'm/yr';
+	end
+end
+
+% save to file
+fname = 'Kn_meltrate_analysis';
+fprintf('   saving results to %s\n',fullfile(datadir,fname));
+save(fullfile(datadir,fname),'results_all','-v7.3');
 end % }}}
 
 if perform(org,'plot_thermocline') % {{{
@@ -455,4 +1144,51 @@ function [region_mask, region_shape] = mask_region(polyvec_gr,polyvec_fl,Xq,Yq,m
 
 	region_shape = union([region_shape_gr,region_shape_fl]); % create union of the polyshape vector
 	region_mask = (region_mask_gr | region_mask_fl); % mask of points in the shape
+end % }}}
+function [A,x,y] = interpISSMtoDanMesh(md,field,D) % {{{
+% md      the ISSM model
+% field   the ISSM field
+% D       the structure with info about Dan's mesh
+
+	% interpolation points
+	x_q = D.X_q;
+	y_q = D.Y_q;
+
+	% interpolate the field
+   field_q = InterpFromMeshToMesh2d(md.mesh.elements, md.mesh.x ,md.mesh.y, field, x_q, y_q); % thickness at cell centers (m)
+
+	% partition by domain
+	A = struct();
+
+	A.PIG   = field_q(D.PIG_ind);   % interpolated field over Pine Island Glacier catchment (m/yr)
+	A.THW   = field_q(D.THW_ind);   % interpolated field over Thwaites Glacier cathcment (m/yr)
+	A.SMITH = field_q(D.SMITH_ind); % interpolated field over Smith Glacier cathment (m/yr)
+   A.units   = '';
+
+	if nargout > 1
+		x = struct();
+		x.PIG   = x_q(D.PIG_ind); % x interpolation points in Polar Stereographic (m)
+		x.THW   = x_q(D.THW_ind); % x interpolation points in Polar Stereographic (m)
+		x.SMITH = x_q(D.SMITH_ind); % x interpolation points in Polar Stereographic (m)
+		x.units = 'm';
+
+		y = struct();
+		y.PIG   = y_q(D.PIG_ind);   % y interpolation points in Polar Stereographic (m)
+		y.THW   = y_q(D.THW_ind);   % y interpolation points in Polar Stereographic (m)
+		y.SMITH = y_q(D.SMITH_ind); % y interpolation points in Polar Stereographic (m)
+		y.units = 'm';
+	end
+end % }}}
+function [mean_melt,n] = get_mean_melt_per_bin(Kn,meltrate,edges) % {{{
+	[n,bin] = histc(Kn,edges);
+	%	
+	for j=1:(numel(n)-1)
+		if n(j)<=5
+			mean_melt(j)=NaN;
+		else
+			ind = [bin==j];
+			mean_melt(j) = nanmean(meltrate(ind));
+		end
+	end
+	n=n(:)';
 end % }}}

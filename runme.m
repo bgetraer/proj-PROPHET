@@ -1,4 +1,4 @@
-steps=[10];
+steps=[1];
 
 % PROPHET Amundsen Sea Coupling
 % Outline:
@@ -1954,7 +1954,7 @@ function write_sizefile(fname,SZ) % {{{
 	% INPUT
 	%    fname   file to write to 
 	%    SZ      struct with fields: sNx,sNy,OLx,OLy,nSx,nSy,nPx,nPy,Nx,Ny,Nr, and reffile
-	%     SZ.reffile   MITgcm reference file to read from
+	%    SZ.reffile   MITgcm reference file to read from
 
 	if SZ.Nx~=(SZ.sNx*SZ.nSx*SZ.nPx) | SZ.Ny~=(SZ.sNy*SZ.nSy*SZ.nPy)
 		error('MITgcm domain discretization inconsistent');
